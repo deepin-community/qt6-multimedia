@@ -1,0 +1,66 @@
+# SymbolsHelper-Confirmed: 6.2.1 amd64
+libQt6MultimediaWidgets.so.6 libqt6multimediawidgets6 #MINVER#
+* Build-Depends-Package: qt6-multimedia-dev
+ _ZN12QVideoWidget11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
+ _ZN12QVideoWidget11qt_metacastEPKc@Base 6.2.1
+ _ZN12QVideoWidget11resizeEventEP12QResizeEvent@Base 6.2.1
+ _ZN12QVideoWidget13setFullScreenEb@Base 6.2.1
+ _ZN12QVideoWidget16staticMetaObjectE@Base 6.2.1
+ _ZN12QVideoWidget17fullScreenChangedEb@Base 6.2.1
+ _ZN12QVideoWidget18setAspectRatioModeEN2Qt15AspectRatioModeE@Base 6.2.1
+ _ZN12QVideoWidget22aspectRatioModeChangedEN2Qt15AspectRatioModeE@Base 6.2.1
+ _ZN12QVideoWidget5eventEP6QEvent@Base 6.2.1
+ _ZN12QVideoWidget9hideEventEP10QHideEvent@Base 6.2.1
+ _ZN12QVideoWidget9moveEventEP10QMoveEvent@Base 6.2.1
+ _ZN12QVideoWidget9showEventEP10QShowEvent@Base 6.2.1
+ _ZN12QVideoWidgetC1EP7QWidget@Base 6.2.1
+ _ZN12QVideoWidgetC2EP7QWidget@Base 6.2.1
+ _ZN12QVideoWidgetD0Ev@Base 6.2.1
+ _ZN12QVideoWidgetD1Ev@Base 6.2.1
+ _ZN12QVideoWidgetD2Ev@Base 6.2.1
+ _ZN18QGraphicsVideoItem10itemChangeEN13QGraphicsItem18GraphicsItemChangeERK8QVariant@Base 6.2.1
+ _ZN18QGraphicsVideoItem10timerEventEP11QTimerEvent@Base 6.2.1
+ _ZN18QGraphicsVideoItem11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
+ _ZN18QGraphicsVideoItem11qt_metacastEPKc@Base 6.2.1
+ _ZN18QGraphicsVideoItem16staticMetaObjectE@Base 6.2.1
+ _ZN18QGraphicsVideoItem17nativeSizeChangedERK6QSizeF@Base 6.2.1
+ _ZN18QGraphicsVideoItem18setAspectRatioModeEN2Qt15AspectRatioModeE@Base 6.2.1
+ _ZN18QGraphicsVideoItem5paintEP8QPainterPK24QStyleOptionGraphicsItemP7QWidget@Base 6.2.1
+ _ZN18QGraphicsVideoItem7setSizeERK6QSizeF@Base 6.2.1
+ _ZN18QGraphicsVideoItem9setOffsetERK7QPointF@Base 6.2.1
+ _ZN18QGraphicsVideoItemC1EP13QGraphicsItem@Base 6.2.1
+ _ZN18QGraphicsVideoItemC2EP13QGraphicsItem@Base 6.2.1
+ _ZN18QGraphicsVideoItemD0Ev@Base 6.2.1
+ _ZN18QGraphicsVideoItemD1Ev@Base 6.2.1
+ _ZN18QGraphicsVideoItemD2Ev@Base 6.2.1
+ _ZNK12QVideoWidget10metaObjectEv@Base 6.2.1
+ _ZNK12QVideoWidget15aspectRatioModeEv@Base 6.2.1
+ _ZNK12QVideoWidget8sizeHintEv@Base 6.2.1
+ _ZNK12QVideoWidget9videoSinkEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem10metaObjectEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem10nativeSizeEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem12boundingRectEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem15aspectRatioModeEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem4sizeEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem6offsetEv@Base 6.2.1
+ _ZNK18QGraphicsVideoItem9videoSinkEv@Base 6.2.1
+ _ZTI12QVideoWidget@Base 6.2.1
+ _ZTI18QGraphicsVideoItem@Base 6.2.1
+ _ZTS12QVideoWidget@Base 6.2.1
+ _ZTS18QGraphicsVideoItem@Base 6.2.1
+ _ZTV12QVideoWidget@Base 6.2.1
+ _ZTV18QGraphicsVideoItem@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI6QSizeFE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI6QSizeFE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI6QSizeFE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
+ (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
+ (c++)"non-virtual thunk to QGraphicsVideoItem::boundingRect() const@Base" 6.2.1
+ (c++)"non-virtual thunk to QGraphicsVideoItem::itemChange(QGraphicsItem::GraphicsItemChange, QVariant const&)@Base" 6.2.1
+ (c++)"non-virtual thunk to QGraphicsVideoItem::paint(QPainter*, QStyleOptionGraphicsItem const*, QWidget*)@Base" 6.2.1
+ (c++)"non-virtual thunk to QGraphicsVideoItem::~QGraphicsVideoItem()@Base" 6.2.1
+ (c++)"non-virtual thunk to QVideoWidget::~QVideoWidget()@Base" 6.2.1

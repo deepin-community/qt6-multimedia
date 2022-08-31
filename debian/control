@@ -1,0 +1,94 @@
+Source: qt6-multimedia
+Section: libs
+Priority: optional
+Maintainer: Deepin Developer <deepin-dev@deepin.org>
+Uploaders: Deepin Packages Builder <packages@deepin.org>
+Build-Depends: cmake (>= 3.18~),
+               debhelper-compat (= 13),
+               libasound2-dev [linux-any],
+               libgl-dev,
+               libgstreamer-plugins-base1.0-dev,
+               libgstreamer1.0-dev,
+               libqt6opengl6-dev (>= 6.2.4~),
+               libqt6shadertools6-dev (>= 6.2.4~),
+               libqt6svg6-dev (>= 6.2.4~),
+               libssl-dev,
+               libvulkan-dev [linux-any],
+               ninja-build,
+               pkg-config,
+               pkg-kde-tools,
+               qml6-module-qtquick (>= 6.2.4~),
+               qml6-module-qttest (>= 6.2.4~),
+               qt6-base-dev (>= 6.2.4~),
+               qt6-base-private-dev (>= 6.2.4~),
+               qt6-declarative-dev (>= 6.2.4~),
+               qt6-declarative-private-dev (>= 6.2.4~),
+               xauth <!nocheck>,
+               xvfb <!nocheck>,
+Standards-Version: 4.6.0
+Homepage: https://www.qt.io/developers/
+Rules-Requires-Root: no
+
+Package: libqt6multimedia6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 Multimedia library
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains a set of APIs to play and record media, and manage a
+ collection of media content.
+
+Package: libqt6multimediaquick6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 Multimedia Quick library
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains a set of APIs to play and record media, and manage a
+ collection of media content with the Quick module.
+
+Package: libqt6multimediawidgets6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 Multimedia Widgets library
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains a set of widgets to play and record media, and manage a
+ collection of media content.
+
+Package: qml6-module-qtmultimedia
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends}
+Depends: qml6-module-qtquick, ${misc:Depends}, ${shlibs:Depends}
+Description: Qt 6 Multimedia QML module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the Multimedia QML module for QtDeclarative.
+
+Package: qt6-multimedia-dev
+Architecture: any
+Multi-Arch: same
+Section: libdevel
+Depends: libglib2.0-dev,
+         libqt6multimedia6 (= ${binary:Version}),
+         libqt6multimediaquick6 (= ${binary:Version}),
+         libqt6multimediawidgets6 (= ${binary:Version}),
+         qt6-base-dev,
+         ${misc:Depends},
+Description: Qt 6 Multimedia - development files
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the development files needed to build Qt applications
+ using Qt Multimedia libraries.
