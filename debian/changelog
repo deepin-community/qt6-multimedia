@@ -1,6 +1,7 @@
 qt6-multimedia (6.2.4.1-1+dde) stable; urgency=medium
 
   * Adapt to V23.
+  * Update symbols.
 
  -- Lu YaNing <luyaning@uniontech.com>  Sat, 08 Oct 2022 09:55:08 +0800
 
