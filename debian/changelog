@@ -1,12 +1,226 @@
-qt6-multimedia (6.2.4.1-1+dde) stable; urgency=medium
+qt6-multimedia (6.4.2-10) unstable; urgency=medium
 
-  * Adapt to V23.
+  [ Patrick Franz ]
+  * Release to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 26 Jul 2023 17:53:03 +0200
+
+qt6-multimedia (6.4.2-9) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Add binary package for examples.
+  * Add binary packages for documentation.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 26 Jul 2023 11:43:39 +0200
+
+qt6-multimedia (6.4.2-8) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Remove build-dependency on libqt6opengl6-dev as it has been merged
+    into qt6-base-dev.
+  * Do not install examples (Closes: #1041636).
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 21 Jul 2023 18:23:57 +0200
+
+qt6-multimedia (6.4.2-7) unstable; urgency=medium
+
+  * Team upload.
+  * Properly spell the "linux-any" architecture marker for the libva-dev build
+    dependency, so it actually applies to Linux architectures. This actually
+    enables the VA-API support on Linux, as 6.4.2-6 meant to.
+
+ -- Pino Toscano <pino@debian.org>  Sun, 09 Jul 2023 07:52:22 +0200
+
+qt6-multimedia (6.4.2-6) unstable; urgency=medium
+
+  * Team upload.
+  * Add libva-dev in order to also provide VAAPI support.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sat, 08 Jul 2023 11:53:07 -0300
+
+qt6-multimedia (6.4.2-5) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Remove references of libqt6quick3dspatialaudio6 in qt6-multimedia-
+    dev (Closes: #1035457).
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 06 May 2023 17:40:13 +0200
+
+qt6-multimedia (6.4.2-4) unstable; urgency=medium
+
+  * Team upload to unstable.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Fri, 27 Jan 2023 15:48:31 -0300
+
+qt6-multimedia (6.4.2-3) experimental; urgency=medium
+
+  * Team upload.
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Add qt6-quick3d as a build dependency. This introduces a new binary package
+    providing a QML module for Quick 3D spatial audio.
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+  * Update d/copyright.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sun, 22 Jan 2023 23:22:21 -0300
+
+qt6-multimedia (6.4.2-2) unstable; urgency=medium
+
+  * Team upload.
+  * Add other optional build dependencies (Closes: #1029362):
+    - libav* and libswscale-dev: provides ffmepg.
+    - libpulse-dev: PulseAudio support.
+    The other non -Qt realted optional build dependencies are not meant for
+    Linux.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sat, 21 Jan 2023 18:13:42 -0300
+
+qt6-multimedia (6.4.2-1) unstable; urgency=medium
+
+  * Team upload.
+  * Bump package version to 6.4.2-1, the tarball is the same (matches md5sum).
+  * Backport fix for QTBUG-108221 as
+    provide_default_implementation_for_qplatformmediadevices.patch
+    (Closes: #1027894). Thanks Moritz Schlarb for the pointer.
+    - Adjust symbols files. The symbols are all private and not currently
+      being exported, so it is a safe change.
+
+ -- Lisandro Damián Nicanor Pérez Meyer <lisandro@debian.org>  Sat, 21 Jan 2023 13:01:24 -0300
+
+qt6-multimedia (6.4.2~rc1-2) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 30 Dec 2022 16:58:30 +0100
+
+qt6-multimedia (6.4.2~rc1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.4.2).
+  * Bump Qt B-Ds to 6.4.2.
+  * Bump Standards-Version to 4.6.2 (no changes needed).
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 27 Dec 2022 22:26:57 +0100
+
+qt6-multimedia (6.4.1-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Adjust build-dependencies.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 15 Dec 2022 00:06:12 +0100
+
+qt6-multimedia (6.4.1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release 6.4.1 (Closes: #1012871).
+  * Bump Qt B-Ds to 6.4.1.
+  * Remove fix-build-on-unsupported-platforms.patch as it has been
+    applied upstream.
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 17 Nov 2022 16:26:45 +0100
+
+qt6-multimedia (6.4.0-3) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Enable link time optimization (Closes: #1015621).
+  * Fix FTCBFS, thx to Helmut Grohne: Pass -DQT_HOST_PATH (Closes:
+    #1023745).
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 13 Nov 2022 14:22:08 +0100
+
+qt6-multimedia (6.4.0-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+  * Add patch to fix build failure on i386.
+
+ -- Patrick Franz <deltaone@debian.org>  Sat, 29 Oct 2022 13:51:54 +0200
+
+qt6-multimedia (6.4.0-1) experimental; urgency=medium
+
+  [ Lisandro Damián Nicanor Pérez Meyer ]
+  * Bump minimum CMake version in order to get pkg-config's .pc files.
+
+  [ Patrick Franz ]
+  * Increase CMake verbosity level.
+
+  [ Lu YaNing ]
+  * New upstream release (6.4.0).
+  * Bump Qt B-Ds to 6.4.0.
+  * Add libqt6spatialaudio6 package.
+  * Add symbols file.
   * Update symbols.
+  * Update d/copyright.
+  * Add libqt6spatialaudio6 Depends.
+  * Update Descriptions.
+  * Modify the gstreamer plug-in library package location.
 
- -- Lu YaNing <luyaning@uniontech.com>  Sat, 08 Oct 2022 09:55:08 +0800
+ -- Patrick Franz <deltaone@debian.org>  Sat, 22 Oct 2022 15:21:29 +0200
 
-qt6-multimedia (6.2.4-1+dde) stable; urgency=medium
+qt6-multimedia (6.3.1-2) unstable; urgency=medium
 
-  * ['Rebuild  against by  current gcc 11.2']
+  [ Patrick Franz ]
+  * Upload to unstable.
 
- -- Deepin Packages Builder <packages@deepin.org>  Wed, 31 Aug 2022 14:57:12 +0800
+ -- Patrick Franz <deltaone@debian.org>  Mon, 15 Aug 2022 19:22:50 +0200
+
+qt6-multimedia (6.3.1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.3.1).
+  * Bump Qt B-Ds to 6.3.1.
+  * Bump Standards-Version to 4.6.1 (no changes needed).
+  * Update list of installed files.
+
+ -- Patrick Franz <deltaone@debian.org>  Sun, 17 Jul 2022 16:09:16 +0200
+
+qt6-multimedia (6.3.0-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.3.0).
+  * Bump Qt B-Ds to 6.3.0.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 15 Jun 2022 21:58:33 +0200
+
+qt6-multimedia (6.2.4-2) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Fri, 22 Apr 2022 20:06:49 +0200
+
+qt6-multimedia (6.2.4-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.2.4).
+  * Bump Qt B-Ds to 6.2.4.
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Thu, 31 Mar 2022 00:20:26 +0200
+
+qt6-multimedia (6.2.2-3) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Upload to unstable.
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 15 Feb 2022 22:41:20 +0100
+
+qt6-multimedia (6.2.2-2) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * Update symbols from buildlogs.
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 27 Dec 2021 16:22:15 +0100
+
+qt6-multimedia (6.2.2-1) experimental; urgency=medium
+
+  * Initial release (Closes: #999690)
+
+ -- Patrick Franz <deltaone@debian.org>  Mon, 15 Nov 2021 00:39:03 +0100

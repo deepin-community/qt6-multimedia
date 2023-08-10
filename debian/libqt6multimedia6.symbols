@@ -1,8 +1,9 @@
-# SymbolsHelper-Confirmed: 6.2.4 amd64 arm64
+# SymbolsHelper-Confirmed: 6.4.2 amd64
 libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
 * Build-Depends-Package: qt6-multimedia-dev
- _Z18qt_gst_video_sinksv@Base 6.2.1
- _Z19qt_real_to_fractiondPiS_@Base 6.2.1
+ _Z15qRealToFractiond@Base 6.4.0
+ _Z20qImageFromVideoFrameRK11QVideoFrameNS_13RotationAngleEbb@Base 6.4.0
+ _ZGVN25QPlatformMediaIntegration12notAvailableE@Base 6.4.1
  _ZGVZN9QMetaType21registerConverterImplI5QListI12QAudioDeviceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Base 6.2.1
  _ZGVZN9QMetaType21registerConverterImplI5QListI13QCameraDeviceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Base 6.2.1
  _ZGVZN9QMetaType21registerConverterImplI5QListI13QCameraFormatE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Base 6.2.1
@@ -38,31 +39,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN10QAudioSinkD0Ev@Base 6.2.1
  _ZN10QAudioSinkD1Ev@Base 6.2.1
  _ZN10QAudioSinkD2Ev@Base 6.2.1
- _ZN10QGstAppSrc10noMoreDataEv@Base 6.2.1
- _ZN10QGstAppSrc11onDataReadyEv@Base 6.2.1
- _ZN10QGstAppSrc11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN10QGstAppSrc11qt_metacastEPKc@Base 6.2.1
- _ZN10QGstAppSrc12on_need_dataEP10_GstAppSrcjPv@Base 6.2.1
- (subst)_ZN10QGstAppSrc12on_seek_dataEP10_GstAppSrc{uint64_t}Pv@Base 6.2.1
- _ZN10QGstAppSrc14bytesProcessedEi@Base 6.2.1
- _ZN10QGstAppSrc14on_enough_dataEP10_GstAppSrcPv@Base 6.2.1
- _ZN10QGstAppSrc14setAudioFormatERK12QAudioFormat@Base 6.2.1
- _ZN10QGstAppSrc15streamDestroyedEv@Base 6.2.1
- _ZN10QGstAppSrc16staticMetaObjectE@Base 6.2.1
- _ZN10QGstAppSrc17setExternalAppSrcERK11QGstElement@Base 6.2.1
- _ZN10QGstAppSrc5setupEP9QIODevicex@Base 6.2.1
- (subst)_ZN10QGstAppSrc5writeEPKc{qptrdiff}@Base 6.2.1
- _ZN10QGstAppSrc6doSeekEx@Base 6.2.1
- _ZN10QGstAppSrc7elementEv@Base 6.2.1
- _ZN10QGstAppSrc7sendEOSEv@Base 6.2.1
- _ZN10QGstAppSrc8pushDataEv@Base 6.2.1
- _ZN10QGstAppSrc9eosOrIdleEv@Base 6.2.1
- _ZN10QGstAppSrc9setStreamEP9QIODevicex@Base 6.2.1
- _ZN10QGstAppSrcC1EP7QObject@Base 6.2.1
- _ZN10QGstAppSrcC2EP7QObject@Base 6.2.1
- _ZN10QGstAppSrcD0Ev@Base 6.2.1
- _ZN10QGstAppSrcD1Ev@Base 6.2.1
- _ZN10QGstAppSrcD2Ev@Base 6.2.1
  _ZN10QVideoSink11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN10QVideoSink11qt_metacastEPKc@Base 6.2.1
  _ZN10QVideoSink13setVideoFrameERK11QVideoFrame@Base 6.2.1
@@ -137,6 +113,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN12QAudioDeviceD2Ev@Base 6.2.1
  _ZN12QAudioDeviceaSERKS_@Base 6.2.1
  _ZN12QAudioFormat16setChannelConfigENS_13ChannelConfigE@Base 6.2.1
+ _ZN12QAudioFormat35defaultChannelConfigForChannelCountEi@Base 6.4.0
  _ZN12QAudioOutput11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN12QAudioOutput11qt_metacastEPKc@Base 6.2.1
  _ZN12QAudioOutput12mutedChangedEb@Base 6.2.1
@@ -419,6 +396,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN13QMetaSequence12MetaSequenceI5QListIN14QMediaMetaData3KeyEEE5valueE@Base 6.2.1
  _ZN14QMediaMetaData16staticMetaObjectE@Base 6.2.1
  _ZN14QMediaMetaData19metaDataKeyToStringENS_3KeyE@Base 6.2.1
+ _ZN14QMediaMetaData7keyTypeENS_3KeyE@Base 6.4.0
  _ZN14QMediaRecorder10setQualityENS_7QualityE@Base 6.2.1
  _ZN14QMediaRecorder11addMetaDataERK14QMediaMetaData@Base 6.2.1
  _ZN14QMediaRecorder11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
@@ -459,14 +437,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN14QMediaRecorderD0Ev@Base 6.2.1
  _ZN14QMediaRecorderD1Ev@Base 6.2.1
  _ZN14QMediaRecorderD2Ev@Base 6.2.1
- _ZN15QGstVideoBuffer11mapTexturesEv@Base 6.2.1
- _ZN15QGstVideoBuffer3mapEN11QVideoFrame7MapModeE@Base 6.2.1
- _ZN15QGstVideoBuffer5unmapEv@Base 6.2.1
- _ZN15QGstVideoBufferC1EP10_GstBufferRK13_GstVideoInfoP19QGstreamerVideoSinkRK17QVideoFrameFormatN8QGstCaps12MemoryFormatE@Base 6.2.1
- _ZN15QGstVideoBufferC2EP10_GstBufferRK13_GstVideoInfoP19QGstreamerVideoSinkRK17QVideoFrameFormatN8QGstCaps12MemoryFormatE@Base 6.2.1
- _ZN15QGstVideoBufferD0Ev@Base 6.2.1
- _ZN15QGstVideoBufferD1Ev@Base 6.2.1
- _ZN15QGstVideoBufferD2Ev@Base 6.2.1
  _ZN15QMediaTimeRange11addIntervalERKNS_8IntervalE@Base 6.2.1
  _ZN15QMediaTimeRange11addIntervalExx@Base 6.2.1
  _ZN15QMediaTimeRange12addTimeRangeERKS_@Base 6.2.1
@@ -494,6 +464,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN15QPlatformCamera11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN15QPlatformCamera11qt_metacastEPKc@Base 6.2.1
  _ZN15QPlatformCamera13activeChangedEb@Base 6.2.1
+ _ZN15QPlatformCamera13newVideoFrameERK11QVideoFrame@Base 6.4.0
  _ZN15QPlatformCamera16flashModeChangedEN7QCamera9FlashModeE@Base 6.2.1
  _ZN15QPlatformCamera16focusModeChangedEN7QCamera9FocusModeE@Base 6.2.1
  _ZN15QPlatformCamera16staticMetaObjectE@Base 6.2.1
@@ -517,32 +488,15 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN15QPlatformCamera5errorEiRK7QString@Base 6.2.1
  _ZN15QPlatformCameraC1EP7QCamera@Base 6.2.1
  _ZN15QPlatformCameraC2EP7QCamera@Base 6.2.1
- _ZN16QGstSubtitleSink10class_initEPvS0_@Base 6.2.1
- _ZN16QGstSubtitleSink10createSinkEP19QGstreamerVideoSink@Base 6.2.1
- _ZN16QGstSubtitleSink10wait_eventEP12_GstBaseSinkP9_GstEvent@Base 6.2.1
- _ZN16QGstSubtitleSink12change_stateEP11_GstElement14GstStateChange@Base 6.2.1
- _ZN16QGstSubtitleSink13instance_initEP14_GTypeInstancePv@Base 6.2.1
- _ZN16QGstSubtitleSink18propose_allocationEP12_GstBaseSinkP9_GstQuery@Base 6.2.1
- _ZN16QGstSubtitleSink6renderEP12_GstBaseSinkP10_GstBuffer@Base 6.2.1
- _ZN16QGstSubtitleSink8finalizeEP8_GObject@Base 6.2.1
- _ZN16QGstSubtitleSink8get_capsEP12_GstBaseSinkP8_GstCaps@Base 6.2.1
- _ZN16QGstSubtitleSink8get_typeEv@Base 6.2.1
- _ZN16QGstSubtitleSink8set_capsEP12_GstBaseSinkP8_GstCaps@Base 6.2.1
- _ZN16QGstSubtitleSink9base_initEPv@Base 6.2.1
- _ZN17QGstreamerMessageC1EP11_GstMessage@Base 6.2.1
- _ZN17QGstreamerMessageC1ERK13QGstStructure@Base 6.2.1
- _ZN17QGstreamerMessageC1ERKS_@Base 6.2.1
- _ZN17QGstreamerMessageC2EP11_GstMessage@Base 6.2.1
- _ZN17QGstreamerMessageC2ERK13QGstStructure@Base 6.2.1
- _ZN17QGstreamerMessageC2ERKS_@Base 6.2.1
- _ZN17QGstreamerMessageD1Ev@Base 6.2.1
- _ZN17QGstreamerMessageD2Ev@Base 6.2.1
- _ZN17QGstreamerMessageaSERKS_@Base 6.2.1
  _ZN17QVideoFrameFormat11setMirroredEb@Base 6.2.1
  _ZN17QVideoFrameFormat11setViewportERK5QRect@Base 6.2.1
  _ZN17QVideoFrameFormat12setFrameRateEd@Base 6.2.1
  _ZN17QVideoFrameFormat12setFrameSizeERK5QSize@Base 6.2.1
  _ZN17QVideoFrameFormat12setFrameSizeEii@Base 6.2.1
+ _ZN17QVideoFrameFormat13setColorRangeENS_10ColorRangeE@Base 6.4.0
+ _ZN17QVideoFrameFormat13setColorSpaceENS_10ColorSpaceE@Base 6.4.0
+ _ZN17QVideoFrameFormat15setMaxLuminanceEf@Base 6.4.0
+ _ZN17QVideoFrameFormat16setColorTransferENS_13ColorTransferE@Base 6.4.0
  _ZN17QVideoFrameFormat18setYCbCrColorSpaceENS_15YCbCrColorSpaceE@Base 6.2.1
  _ZN17QVideoFrameFormat19pixelFormatToStringENS_11PixelFormatE@Base 6.2.1
  _ZN17QVideoFrameFormat20setScanLineDirectionENS_9DirectionE@Base 6.2.1
@@ -565,50 +519,31 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN18QMemoryVideoBufferD0Ev@Base 6.2.1
  _ZN18QMemoryVideoBufferD1Ev@Base 6.2.1
  _ZN18QMemoryVideoBufferD2Ev@Base 6.2.1
+ _ZN18QPlatformAudioSink11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.4.0
+ _ZN18QPlatformAudioSink11qt_metacastEPKc@Base 6.4.0
+ _ZN18QPlatformAudioSink12errorChangedEN6QAudio5ErrorE@Base 6.4.0
+ _ZN18QPlatformAudioSink12stateChangedEN6QAudio5StateE@Base 6.4.0
+ _ZN18QPlatformAudioSink16staticMetaObjectE@Base 6.4.0
  _ZN18QPlatformVideoSink11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN18QPlatformVideoSink11qt_metacastEPKc@Base 6.2.1
  _ZN18QPlatformVideoSink16staticMetaObjectE@Base 6.2.1
  _ZN18QPlatformVideoSinkC1EP10QVideoSink@Base 6.2.1
  _ZN18QPlatformVideoSinkC2EP10QVideoSink@Base 6.2.1
- _ZN19QGstreamerVideoSink11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN19QGstreamerVideoSink11qt_metacastEPKc@Base 6.2.1
- _ZN19QGstreamerVideoSink11setPipelineE12QGstPipeline@Base 6.2.1
- _ZN19QGstreamerVideoSink12createQtSinkEv@Base 6.2.1
- _ZN19QGstreamerVideoSink16staticMetaObjectE@Base 6.2.1
- _ZN19QGstreamerVideoSink16unrefGstContextsEv@Base 6.2.1
- _ZN19QGstreamerVideoSink17updateGstContextsEv@Base 6.2.1
- _ZN19QGstreamerVideoSink17updateSinkElementEv@Base 6.2.1
- _ZN19QGstreamerVideoSink6setRhiEP4QRhi@Base 6.2.1
- _ZN19QGstreamerVideoSink7gstSinkEv@Base 6.2.1
- _ZN19QGstreamerVideoSinkC1EP10QVideoSink@Base 6.2.1
- _ZN19QGstreamerVideoSinkC2EP10QVideoSink@Base 6.2.1
- _ZN19QGstreamerVideoSinkD0Ev@Base 6.2.1
- _ZN19QGstreamerVideoSinkD1Ev@Base 6.2.1
- _ZN19QGstreamerVideoSinkD2Ev@Base 6.2.1
+ _ZN19QAudioDevicePrivateD0Ev@Base 6.4.0
+ _ZN19QAudioDevicePrivateD1Ev@Base 6.4.0
+ _ZN19QAudioDevicePrivateD2Ev@Base 6.4.0
  _ZN19QVideoTextureHelper14SubtitleLayout6updateERK5QSize7QString@Base 6.2.4
- _ZN19QVideoTextureHelper17updateRhiTexturesE11QVideoFrameP4QRhiP23QRhiResourceUpdateBatchPP11QRhiTexture@Base 6.2.1
- _ZN19QVideoTextureHelper17updateUniformDataEP10QByteArrayRK17QVideoFrameFormatRK11QVideoFrameRK10QMatrix4x4f@Base 6.2.1
+ _ZN19QVideoTextureHelper14createTexturesER11QVideoFrameP4QRhiP23QRhiResourceUpdateBatchOSt10unique_ptrI19QVideoFrameTexturesSt14default_deleteIS7_EE@Base 6.4.1
+ _ZN19QVideoTextureHelper17updateUniformDataEP10QByteArrayRK17QVideoFrameFormatRK11QVideoFrameRK10QMatrix4x4ff@Base 6.4.0
  _ZN19QVideoTextureHelper18textureDescriptionEN17QVideoFrameFormat11PixelFormatE@Base 6.2.1
- _ZN19QVideoTextureHelper20vertexShaderFileNameEN17QVideoFrameFormat11PixelFormatE@Base 6.2.1
- _ZN19QVideoTextureHelper22fragmentShaderFileNameEN17QVideoFrameFormat11PixelFormatE@Base 6.2.1
+ _ZN19QVideoTextureHelper20vertexShaderFileNameERK17QVideoFrameFormat@Base 6.4.0
+ _ZN19QVideoTextureHelper22fragmentShaderFileNameERK17QVideoFrameFormatN13QRhiSwapChain6FormatE@Base 6.4.0
  _ZN20QAbstractVideoBufferC1EN11QVideoFrame10HandleTypeEP4QRhi@Base 6.2.1
  _ZN20QAbstractVideoBufferC2EN11QVideoFrame10HandleTypeEP4QRhi@Base 6.2.1
  _ZN20QAbstractVideoBufferD0Ev@Base 6.2.1
  _ZN20QAbstractVideoBufferD1Ev@Base 6.2.1
  _ZN20QAbstractVideoBufferD2Ev@Base 6.2.1
- _ZN20QGstreamerAudioInput11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN20QGstreamerAudioInput11qt_metacastEPKc@Base 6.2.1
- _ZN20QGstreamerAudioInput12mutedChangedEb@Base 6.2.1
- _ZN20QGstreamerAudioInput13volumeChangedEi@Base 6.2.1
- _ZN20QGstreamerAudioInput14setAudioDeviceERK12QAudioDevice@Base 6.2.1
- _ZN20QGstreamerAudioInput16staticMetaObjectE@Base 6.2.1
- _ZN20QGstreamerAudioInput8setMutedEb@Base 6.2.1
- _ZN20QGstreamerAudioInput9setVolumeEf@Base 6.2.1
- _ZN20QGstreamerAudioInputC1EP11QAudioInput@Base 6.2.1
- _ZN20QGstreamerAudioInputC2EP11QAudioInput@Base 6.2.1
- _ZN20QGstreamerAudioInputD0Ev@Base 6.2.1
- _ZN20QGstreamerAudioInputD1Ev@Base 6.2.1
- _ZN20QGstreamerAudioInputD2Ev@Base 6.2.1
+ _ZN20QAudioHelperInternal16qMultiplySamplesEdRK12QAudioFormatPKvPvi@Base 6.4.0
  _ZN20QMediaCaptureSession11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN20QMediaCaptureSession11qt_metacastEPKc@Base 6.2.1
  _ZN20QMediaCaptureSession11setRecorderEP14QMediaRecorder@Base 6.2.1
@@ -632,106 +567,25 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN20QMediaCaptureSessionD0Ev@Base 6.2.1
  _ZN20QMediaCaptureSessionD1Ev@Base 6.2.1
  _ZN20QMediaCaptureSessionD2Ev@Base 6.2.1
+ _ZN20QPlatformAudioSource11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.4.0
+ _ZN20QPlatformAudioSource11qt_metacastEPKc@Base 6.4.0
+ _ZN20QPlatformAudioSource12errorChangedEN6QAudio5ErrorE@Base 6.4.0
+ _ZN20QPlatformAudioSource12stateChangedEN6QAudio5StateE@Base 6.4.0
+ _ZN20QPlatformAudioSource16staticMetaObjectE@Base 6.4.0
  _ZN20QPlatformMediaPlayer12stateChangedEN12QMediaPlayer13PlaybackStateE@Base 6.2.1
  _ZN20QPlatformMediaPlayer18mediaStatusChangedEN12QMediaPlayer11MediaStatusE@Base 6.2.1
  _ZN20QPlatformMediaPlayer5errorEiRK7QString@Base 6.2.1
  _ZN20QPlatformMediaPlayerD0Ev@Base 6.2.1
  _ZN20QPlatformMediaPlayerD1Ev@Base 6.2.1
  _ZN20QPlatformMediaPlayerD2Ev@Base 6.2.1
- _ZN21QGstVideoRendererSink10class_initEPvS0_@Base 6.2.1
- _ZN21QGstVideoRendererSink10createSinkEP19QGstreamerVideoSink@Base 6.2.1
- _ZN21QGstVideoRendererSink10show_frameEP13_GstVideoSinkP10_GstBuffer@Base 6.2.1
- _ZN21QGstVideoRendererSink12change_stateEP11_GstElement14GstStateChange@Base 6.2.1
- _ZN21QGstVideoRendererSink13instance_initEP14_GTypeInstancePv@Base 6.2.1
- _ZN21QGstVideoRendererSink18propose_allocationEP12_GstBaseSinkP9_GstQuery@Base 6.2.1
- _ZN21QGstVideoRendererSink23handleShowPrerollChangeEP8_GObjectP11_GParamSpecPv@Base 6.2.1
- _ZN21QGstVideoRendererSink4stopEP12_GstBaseSink@Base 6.2.1
- _ZN21QGstVideoRendererSink5eventEP12_GstBaseSinkP9_GstEvent@Base 6.2.4
- _ZN21QGstVideoRendererSink5queryEP12_GstBaseSinkP9_GstQuery@Base 6.2.1
- _ZN21QGstVideoRendererSink6unlockEP12_GstBaseSink@Base 6.2.1
- _ZN21QGstVideoRendererSink7setSinkEP19QGstreamerVideoSink@Base 6.2.1
- _ZN21QGstVideoRendererSink8finalizeEP8_GObject@Base 6.2.1
- _ZN21QGstVideoRendererSink8get_capsEP12_GstBaseSinkP8_GstCaps@Base 6.2.1
- _ZN21QGstVideoRendererSink8get_typeEv@Base 6.2.1
- _ZN21QGstVideoRendererSink8set_capsEP12_GstBaseSinkP8_GstCaps@Base 6.2.1
- _ZN21QGstVideoRendererSink9base_initEPv@Base 6.2.1
- _ZN21QGstreamerAudioOutput11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN21QGstreamerAudioOutput11qt_metacastEPKc@Base 6.2.1
- _ZN21QGstreamerAudioOutput11setPipelineERK12QGstPipeline@Base 6.2.1
- _ZN21QGstreamerAudioOutput12mutedChangedEb@Base 6.2.1
- _ZN21QGstreamerAudioOutput13volumeChangedEi@Base 6.2.1
- _ZN21QGstreamerAudioOutput14setAudioDeviceERK12QAudioDevice@Base 6.2.1
- _ZN21QGstreamerAudioOutput16staticMetaObjectE@Base 6.2.1
- _ZN21QGstreamerAudioOutput8setMutedEb@Base 6.2.1
- _ZN21QGstreamerAudioOutput9setVolumeEf@Base 6.2.1
- _ZN21QGstreamerAudioOutputC1EP12QAudioOutput@Base 6.2.1
- _ZN21QGstreamerAudioOutputC2EP12QAudioOutput@Base 6.2.1
- _ZN21QGstreamerAudioOutputD0Ev@Base 6.2.1
- _ZN21QGstreamerAudioOutputD1Ev@Base 6.2.1
- _ZN21QGstreamerAudioOutputD2Ev@Base 6.2.1
- _ZN21QGstreamerBufferProbe11bufferProbeEP7_GstPadP16_GstPadProbeInfoPv@Base 6.2.1
- _ZN21QGstreamerBufferProbe11probeBufferEP10_GstBuffer@Base 6.2.1
- _ZN21QGstreamerBufferProbe13addProbeToPadEP7_GstPadb@Base 6.2.1
- _ZN21QGstreamerBufferProbe18removeProbeFromPadEP7_GstPad@Base 6.2.1
- _ZN21QGstreamerBufferProbe9capsProbeEP7_GstPadP16_GstPadProbeInfoPv@Base 6.2.1
- _ZN21QGstreamerBufferProbe9probeCapsEP8_GstCaps@Base 6.2.1
- _ZN21QGstreamerBufferProbeC1ENS_5FlagsE@Base 6.2.1
- _ZN21QGstreamerBufferProbeC2ENS_5FlagsE@Base 6.2.1
- _ZN21QGstreamerBufferProbeD0Ev@Base 6.2.1
- _ZN21QGstreamerBufferProbeD1Ev@Base 6.2.1
- _ZN21QGstreamerBufferProbeD2Ev@Base 6.2.1
- _ZN21QGstreamerMediaPlayer10trackCountEN20QPlatformMediaPlayer9TrackTypeE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer11activeTrackEN20QPlatformMediaPlayer9TrackTypeE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer11qt_metacastEPKc@Base 6.2.1
- _ZN21QGstreamerMediaPlayer11setPositionEx@Base 6.2.1
- _ZN21QGstreamerMediaPlayer12removeOutputERNS_13TrackSelectorE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer12setVideoSinkEP10QVideoSink@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelector14createInputPadEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelector14removeInputPadE7QGstPad@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelector18removeAllInputPadsEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelector8inputPadEi@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelectorC1EN20QPlatformMediaPlayer9TrackTypeEPKc@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13TrackSelectorC2EN20QPlatformMediaPlayer9TrackTypeEPKc@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13connectOutputERNS_13TrackSelectorE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13trackMetaDataEN20QPlatformMediaPlayer9TrackTypeEi@Base 6.2.1
- _ZN21QGstreamerMediaPlayer13trackSelectorEN20QPlatformMediaPlayer9TrackTypeE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer14setActiveTrackEN20QPlatformMediaPlayer9TrackTypeEi@Base 6.2.1
- _ZN21QGstreamerMediaPlayer14setAudioOutputEP20QPlatformAudioOutput@Base 6.2.1
- _ZN21QGstreamerMediaPlayer15decoderPadAddedERK11QGstElementRK7QGstPad@Base 6.2.1
- _ZN21QGstreamerMediaPlayer15setPlaybackRateEd@Base 6.2.1
- _ZN21QGstreamerMediaPlayer16removeAllOutputsEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer16staticMetaObjectE@Base 6.2.1
- _ZN21QGstreamerMediaPlayer17decoderPadRemovedERK11QGstElementRK7QGstPad@Base 6.2.1
- _ZN21QGstreamerMediaPlayer17processBusMessageERK17QGstreamerMessage@Base 6.2.1
- _ZN21QGstreamerMediaPlayer18processSyncMessageERK17QGstreamerMessage@Base 6.2.1
- _ZN21QGstreamerMediaPlayer23parseStreamsAndMetadataEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer32uridecodebinElementAddedCallbackEP11_GstElementS1_PS_@Base 6.2.1
- _ZN21QGstreamerMediaPlayer4playEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer4stopEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer5pauseEv@Base 6.2.1
- _ZN21QGstreamerMediaPlayer8setMediaERK4QUrlP9QIODevice@Base 6.2.1
- _ZN21QGstreamerMediaPlayer9stopOrEOSEb@Base 6.2.1
- _ZN21QGstreamerMediaPlayerC1EP12QMediaPlayer@Base 6.2.1
- _ZN21QGstreamerMediaPlayerC2EP12QMediaPlayer@Base 6.2.1
- _ZN21QGstreamerMediaPlayerD0Ev@Base 6.2.1
- _ZN21QGstreamerMediaPlayerD1Ev@Base 6.2.1
- _ZN21QGstreamerMediaPlayerD2Ev@Base 6.2.1
- _ZN21QGstreamerVideoOutput11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN21QGstreamerVideoOutput11qt_metacastEPKc@Base 6.2.1
- _ZN21QGstreamerVideoOutput11setPipelineERK12QGstPipeline@Base 6.2.1
- _ZN21QGstreamerVideoOutput12setIsPreviewEv@Base 6.2.1
- _ZN21QGstreamerVideoOutput12setVideoSinkEP10QVideoSink@Base 6.2.1
- _ZN21QGstreamerVideoOutput14flushSubtitlesEv@Base 6.2.1
- _ZN21QGstreamerVideoOutput16staticMetaObjectE@Base 6.2.1
- _ZN21QGstreamerVideoOutput18linkSubtitleStreamE11QGstElement@Base 6.2.1
- _ZN21QGstreamerVideoOutput20doLinkSubtitleStreamEv@Base 6.2.1
- _ZN21QGstreamerVideoOutput20unlinkSubtitleStreamEv@Base 6.2.4
- _ZN21QGstreamerVideoOutputC1EP7QObject@Base 6.2.1
- _ZN21QGstreamerVideoOutputC2EP7QObject@Base 6.2.1
- _ZN21QGstreamerVideoOutputD0Ev@Base 6.2.1
- _ZN21QGstreamerVideoOutputD1Ev@Base 6.2.1
- _ZN21QGstreamerVideoOutputD2Ev@Base 6.2.1
+ _ZN20QPlatformMediaPlugin11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.4.0
+ _ZN20QPlatformMediaPlugin11qt_metacastEPKc@Base 6.4.0
+ _ZN20QPlatformMediaPlugin16staticMetaObjectE@Base 6.4.0
+ _ZN21QMediaRecorderPrivate23msgFailedStartRecordingEv@Base 6.4.0
+ _ZN21QMediaRecorderPrivateC1Ev@Base 6.4.0
+ _ZN21QMediaRecorderPrivateC2Ev@Base 6.4.0
+ _ZN21QMediaStorageLocation16defaultDirectoryEN14QStandardPaths16StandardLocationE@Base 6.4.0
+ _ZN21QMediaStorageLocation16generateFileNameERK7QStringN14QStandardPaths16StandardLocationES2_@Base 6.4.0
  _ZN21QPlatformAudioDecoder11bufferReadyEv@Base 6.2.1
  _ZN21QPlatformAudioDecoder11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
  _ZN21QPlatformAudioDecoder11qt_metacastEPKc@Base 6.2.1
@@ -759,31 +613,21 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN21QPlatformImageCapture5errorEiiRK7QString@Base 6.2.1
  _ZN21QPlatformImageCaptureC1EP13QImageCapture@Base 6.2.1
  _ZN21QPlatformImageCaptureC2EP13QImageCapture@Base 6.2.1
- _ZN21QPlatformMediaDevices16audioInputDeviceERK12QAudioFormatRK12QAudioDevice@Base 6.2.1
- _ZN21QPlatformMediaDevices17audioOutputDeviceERK12QAudioFormatRK12QAudioDevice@Base 6.2.1
+ _ZN21QPlatformMediaDevices10setDevicesEPS_@Base 6.4.0
+ _ZN21QPlatformMediaDevices15createAudioSinkERK12QAudioDeviceP7QObject@Base 6.4.2
+ _ZN21QPlatformMediaDevices16audioInputDeviceERK12QAudioFormatRK12QAudioDeviceP7QObject@Base 6.4.2
+ _ZN21QPlatformMediaDevices17audioOutputDeviceERK12QAudioFormatRK12QAudioDeviceP7QObject@Base 6.4.2
+ _ZN21QPlatformMediaDevices17createAudioSourceERK12QAudioDeviceP7QObject@Base 6.4.2
+ _ZN21QPlatformMediaDevices8instanceEv@Base 6.4.0
  _ZN21QPlatformMediaDevicesC1Ev@Base 6.2.1
  _ZN21QPlatformMediaDevicesC2Ev@Base 6.2.1
  _ZN21QPlatformMediaDevicesD0Ev@Base 6.2.1
  _ZN21QPlatformMediaDevicesD1Ev@Base 6.2.1
  _ZN21QPlatformMediaDevicesD2Ev@Base 6.2.1
- _ZN22QGstreamerVideoOverlay11qt_metacallEN11QMetaObject4CallEiPPv@Base 6.2.1
- _ZN22QGstreamerVideoOverlay11qt_metacastEPKc@Base 6.2.1
- _ZN22QGstreamerVideoOverlay12setVideoSinkE11QGstElement@Base 6.2.1
- _ZN22QGstreamerVideoOverlay13activeChangedEv@Base 6.2.1
- _ZN22QGstreamerVideoOverlay13setFullScreenEb@Base 6.2.1
- _ZN22QGstreamerVideoOverlay15applyRenderRectEv@Base 6.2.1
- (subst)_ZN22QGstreamerVideoOverlay15setWindowHandleE{quintptr}@Base 6.2.1
- _ZN22QGstreamerVideoOverlay16staticMetaObjectE@Base 6.2.1
- _ZN22QGstreamerVideoOverlay18processSyncMessageERK17QGstreamerMessage@Base 6.2.1
- _ZN22QGstreamerVideoOverlay18setAspectRatioModeEN2Qt15AspectRatioModeE@Base 6.2.1
- _ZN22QGstreamerVideoOverlay18setRenderRectangleERK5QRect@Base 6.2.1
- _ZN22QGstreamerVideoOverlay22nativeVideoSizeChangedEv@Base 6.2.1
- _ZN22QGstreamerVideoOverlay9probeCapsEP8_GstCaps@Base 6.2.1
- _ZN22QGstreamerVideoOverlayC1EP19QGstreamerVideoSinkRK10QByteArray@Base 6.2.1
- _ZN22QGstreamerVideoOverlayC2EP19QGstreamerVideoSinkRK10QByteArray@Base 6.2.1
- _ZN22QGstreamerVideoOverlayD0Ev@Base 6.2.1
- _ZN22QGstreamerVideoOverlayD1Ev@Base 6.2.1
- _ZN22QGstreamerVideoOverlayD2Ev@Base 6.2.1
+ _ZN21QPlatformVideoDevices18videoInputsChangedEv@Base 6.4.0
+ _ZN21QPlatformVideoDevicesD0Ev@Base 6.4.0
+ _ZN21QPlatformVideoDevicesD1Ev@Base 6.4.0
+ _ZN21QPlatformVideoDevicesD2Ev@Base 6.4.0
  _ZN22QPlatformMediaRecorder12stateChangedEN14QMediaRecorder13RecorderStateE@Base 6.2.1
  _ZN22QPlatformMediaRecorder15durationChangedEx@Base 6.2.1
  _ZN22QPlatformMediaRecorder15metaDataChangedEv@Base 6.2.1
@@ -798,6 +642,8 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN24QPlatformMediaFormatInfoD0Ev@Base 6.2.1
  _ZN24QPlatformMediaFormatInfoD1Ev@Base 6.2.1
  _ZN24QPlatformMediaFormatInfoD2Ev@Base 6.2.1
+ _ZN25QPlatformMediaIntegration11videoInputsEv@Base 6.4.0
+ _ZN25QPlatformMediaIntegration12notAvailableE@Base 6.4.1
  _ZN25QPlatformMediaIntegration14setIntegrationEPS_@Base 6.2.1
  _ZN25QPlatformMediaIntegration16createAudioInputEP11QAudioInput@Base 6.2.1
  _ZN25QPlatformMediaIntegration17createAudioOutputEP12QAudioOutput@Base 6.2.1
@@ -913,8 +759,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN7QSampleD0Ev@Base 6.2.1
  _ZN7QSampleD1Ev@Base 6.2.1
  _ZN7QSampleD2Ev@Base 6.2.1
- _ZN9QGstUtils18capsForAudioFormatERK12QAudioFormat@Base 6.2.1
- _ZN9QGstUtils20audioFormatForSampleEP10_GstSample@Base 6.2.1
  _ZNK10QAudioSink10bufferSizeEv@Base 6.2.1
  _ZNK10QAudioSink10metaObjectEv@Base 6.2.1
  _ZNK10QAudioSink12elapsedUSecsEv@Base 6.2.1
@@ -924,7 +768,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK10QAudioSink6formatEv@Base 6.2.1
  _ZNK10QAudioSink6volumeEv@Base 6.2.1
  _ZNK10QAudioSink9bytesFreeEv@Base 6.2.1
- _ZNK10QGstAppSrc10metaObjectEv@Base 6.2.1
  _ZNK10QVideoSink10metaObjectEv@Base 6.2.1
  _ZNK10QVideoSink10videoFrameEv@Base 6.2.1
  _ZNK10QVideoSink12subtitleTextEv@Base 6.2.1
@@ -948,7 +791,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK11QVideoFrame12subtitleTextEv@Base 6.2.1
  _ZNK11QVideoFrame13rotationAngleEv@Base 6.2.4
  _ZNK11QVideoFrame13surfaceFormatEv@Base 6.2.1
- _ZNK11QVideoFrame13textureHandleEi@Base 6.2.1
  _ZNK11QVideoFrame4bitsEi@Base 6.2.1
  _ZNK11QVideoFrame4sizeEv@Base 6.2.1
  _ZNK11QVideoFrame5widthEv@Base 6.2.1
@@ -977,6 +819,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK12QAudioDevice17minimumSampleRateEv@Base 6.2.1
  _ZNK12QAudioDevice19maximumChannelCountEv@Base 6.2.1
  _ZNK12QAudioDevice19minimumChannelCountEv@Base 6.2.1
+ _ZNK12QAudioDevice20channelConfigurationEv@Base 6.4.0
  _ZNK12QAudioDevice22supportedSampleFormatsEv@Base 6.2.1
  _ZNK12QAudioDevice2idEv@Base 6.2.1
  _ZNK12QAudioDevice4modeEv@Base 6.2.1
@@ -1082,9 +925,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK13QCameraFormat12maxFrameRateEv@Base 6.2.1
  _ZNK13QCameraFormat12minFrameRateEv@Base 6.2.1
  _ZNK13QCameraFormateqERKS_@Base 6.2.1
- _ZNK13QGstStructure10resolutionEv@Base 6.2.1
- _ZNK13QGstStructure11pixelFormatEv@Base 6.2.1
- _ZNK13QGstStructure14frameRateRangeEv@Base 6.2.1
  _ZNK13QImageCapture10fileFormatEv@Base 6.2.1
  _ZNK13QImageCapture10metaObjectEv@Base 6.2.1
  _ZNK13QImageCapture10resolutionEv@Base 6.2.1
@@ -1117,8 +957,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK14QMediaRecorder7qualityEv@Base 6.2.1
  _ZNK14QMediaRecorder8durationEv@Base 6.2.1
  _ZNK14QMediaRecorder8metaDataEv@Base 6.2.1
- _ZNK15QGstVideoBuffer13textureHandleEi@Base 6.2.1
- _ZNK15QGstVideoBuffer7mapModeEv@Base 6.2.1
  _ZNK15QMediaTimeRange10latestTimeEv@Base 6.2.1
  _ZNK15QMediaTimeRange12earliestTimeEv@Base 6.2.1
  _ZNK15QMediaTimeRange12isContinuousEv@Base 6.2.1
@@ -1126,12 +964,15 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK15QMediaTimeRange8containsEx@Base 6.2.1
  _ZNK15QMediaTimeRange9intervalsEv@Base 6.2.1
  _ZNK15QPlatformCamera10metaObjectEv@Base 6.2.1
- _ZNK17QGstreamerMessage10rawMessageEv@Base 6.2.1
+ _ZNK17QVideoFrameFormat10colorRangeEv@Base 6.4.0
+ _ZNK17QVideoFrameFormat10colorSpaceEv@Base 6.4.0
  _ZNK17QVideoFrameFormat10frameWidthEv@Base 6.2.1
  _ZNK17QVideoFrameFormat10isMirroredEv@Base 6.2.1
  _ZNK17QVideoFrameFormat10planeCountEv@Base 6.2.1
  _ZNK17QVideoFrameFormat11frameHeightEv@Base 6.2.1
  _ZNK17QVideoFrameFormat11pixelFormatEv@Base 6.2.1
+ _ZNK17QVideoFrameFormat12maxLuminanceEv@Base 6.4.0
+ _ZNK17QVideoFrameFormat13colorTransferEv@Base 6.4.0
  _ZNK17QVideoFrameFormat15yCbCrColorSpaceEv@Base 6.2.1
  _ZNK17QVideoFrameFormat17scanLineDirectionEv@Base 6.2.1
  _ZNK17QVideoFrameFormat17updateUniformDataEP10QByteArrayRK11QVideoFrameRK10QMatrix4x4f@Base 6.2.1
@@ -1144,16 +985,12 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK17QVideoFrameFormateqERKS_@Base 6.2.1
  _ZNK17QVideoFrameFormatneERKS_@Base 6.2.1
  _ZNK18QMemoryVideoBuffer7mapModeEv@Base 6.2.1
+ _ZNK18QPlatformAudioSink10metaObjectEv@Base 6.4.0
  _ZNK18QPlatformVideoSink10metaObjectEv@Base 6.2.1
- _ZNK19QGstreamerVideoSink10metaObjectEv@Base 6.2.1
- _ZNK19QGstreamerVideoSink14inStoppedStateEv@Base 6.2.1
  _ZNK19QVideoTextureHelper14SubtitleLayout4drawEP8QPainterRK7QPointF@Base 6.2.4
  _ZNK19QVideoTextureHelper14SubtitleLayout7toImageEv@Base 6.2.1
  _ZNK20QAbstractVideoBuffer10handleTypeEv@Base 6.2.1
- _ZNK20QGstreamerAudioInput10audioInputEv@Base 6.2.1
- _ZNK20QGstreamerAudioInput10metaObjectEv@Base 6.2.1
- _ZNK20QGstreamerAudioInput6volumeEv@Base 6.2.1
- _ZNK20QGstreamerAudioInput7isMutedEv@Base 6.2.1
+ _ZNK20QAbstractVideoBuffer3rhiEv@Base 6.4.0
  _ZNK20QMediaCaptureSession10audioInputEv@Base 6.2.1
  _ZNK20QMediaCaptureSession10metaObjectEv@Base 6.2.1
  _ZNK20QMediaCaptureSession11audioOutputEv@Base 6.2.1
@@ -1161,28 +998,15 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK20QMediaCaptureSession15platformSessionEv@Base 6.2.1
  _ZNK20QMediaCaptureSession6cameraEv@Base 6.2.1
  _ZNK20QMediaCaptureSession9videoSinkEv@Base 6.2.1
- _ZNK21QGstreamerAudioOutput10metaObjectEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer10metaObjectEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer11mediaStreamEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer12playbackRateEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer14bufferProgressEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer23availablePlaybackRangesEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer5mediaEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer8durationEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer8metaDataEv@Base 6.2.1
- _ZNK21QGstreamerMediaPlayer8positionEv@Base 6.2.1
- _ZNK21QGstreamerVideoOutput10metaObjectEv@Base 6.2.1
+ _ZNK20QPlatformAudioSource10metaObjectEv@Base 6.4.0
+ _ZNK20QPlatformMediaPlugin10metaObjectEv@Base 6.4.0
  _ZNK21QPlatformAudioDecoder10metaObjectEv@Base 6.2.1
  _ZNK21QPlatformImageCapture10metaObjectEv@Base 6.2.1
- _ZNK21QPlatformMediaDevices10audioInputERK10QByteArray@Base 6.2.1
- _ZNK21QPlatformMediaDevices10videoInputERK10QByteArray@Base 6.2.1
- _ZNK21QPlatformMediaDevices11audioOutputERK10QByteArray@Base 6.2.1
+ _ZNK21QPlatformMediaDevices11audioInputsEv@Base 6.4.2
+ _ZNK21QPlatformMediaDevices12audioOutputsEv@Base 6.4.2
  _ZNK21QPlatformMediaDevices18audioInputsChangedEv@Base 6.2.1
  _ZNK21QPlatformMediaDevices18videoInputsChangedEv@Base 6.2.1
  _ZNK21QPlatformMediaDevices19audioOutputsChangedEv@Base 6.2.1
- _ZNK22QGstreamerVideoOverlay10metaObjectEv@Base 6.2.1
- _ZNK22QGstreamerVideoOverlay15nativeVideoSizeEv@Base 6.2.1
- _ZNK22QGstreamerVideoOverlay9videoSinkEv@Base 6.2.1
  _ZNK24QPlatformMediaFormatInfo11isSupportedERK12QMediaFormatNS0_14ConversionModeE@Base 6.2.1
  _ZNK24QPlatformMediaFormatInfo20supportedAudioCodecsERK12QMediaFormatNS0_14ConversionModeE@Base 6.2.1
  _ZNK24QPlatformMediaFormatInfo20supportedFileFormatsERK12QMediaFormatNS0_14ConversionModeE@Base 6.2.1
@@ -1228,15 +1052,10 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZNK7QCamera9flashModeEv@Base 6.2.1
  _ZNK7QCamera9focusModeEv@Base 6.2.1
  _ZNK7QCamera9torchModeEv@Base 6.2.1
- _ZNK7QGValue16getSampleFormatsEv@Base 6.2.1
  _ZNK7QSample10metaObjectEv@Base 6.2.1
  _ZNK7QSample5stateEv@Base 6.2.1
- (optional=templinst)_ZNSt8_Rb_treeI4QUrlSt4pairIKS0_P7QSampleESt10_Select1stIS5_ESt4lessIS0_ESaIS5_EE11equal_rangeERS2_@Base 6.2.1
- (optional=templinst)_ZNSt8_Rb_treeI4QUrlSt4pairIKS0_P7QSampleESt10_Select1stIS5_ESt4lessIS0_ESaIS5_EE12_M_erase_auxESt23_Rb_tree_const_iteratorIS5_ESD_@Base 6.2.1
- (optional=templinst)_ZNSt8_Rb_treeI4QUrlSt4pairIKS0_P7QSampleESt10_Select1stIS5_ESt4lessIS0_ESaIS5_EE24_M_get_insert_unique_posERS2_@Base 6.2.1
- (optional=templinst)_ZNSt8_Rb_treeI4QUrlSt4pairIKS0_P7QSampleESt10_Select1stIS5_ESt4lessIS0_ESaIS5_EE29_M_get_insert_hint_unique_posESt23_Rb_tree_const_iteratorIS5_ERS2_@Base 6.2.1
+ _ZSt19piecewise_construct@Base 6.4.2
  _ZTI10QAudioSink@Base 6.2.1
- _ZTI10QGstAppSrc@Base 6.2.1
  _ZTI10QVideoSink@Base 6.2.1
  _ZTI11QAudioInput@Base 6.2.1
  _ZTI12QAudioOutput@Base 6.2.1
@@ -1250,25 +1069,21 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZTI13QImageCapture@Base 6.2.1
  _ZTI13QMediaDevices@Base 6.2.1
  _ZTI14QMediaRecorder@Base 6.2.1
- _ZTI15QGstVideoBuffer@Base 6.2.1
  _ZTI15QPlatformCamera@Base 6.2.1
  _ZTI18QMemoryVideoBuffer@Base 6.2.1
+ _ZTI18QPlatformAudioSink@Base 6.4.0
  _ZTI18QPlatformVideoSink@Base 6.2.1
- _ZTI19QGstreamerVideoSink@Base 6.2.1
- _ZTI19QPlatformAudioInput@Base 6.2.1
+ _ZTI19QAudioDevicePrivate@Base 6.4.0
+ _ZTI19QVideoFrameTextures@Base 6.4.1
  _ZTI20QAbstractVideoBuffer@Base 6.2.1
- _ZTI20QGstreamerAudioInput@Base 6.2.1
  _ZTI20QMediaCaptureSession@Base 6.2.1
- _ZTI20QPlatformAudioOutput@Base 6.2.1
+ _ZTI20QPlatformAudioSource@Base 6.4.0
  _ZTI20QPlatformMediaPlayer@Base 6.2.1
- _ZTI21QGstreamerAudioOutput@Base 6.2.1
- _ZTI21QGstreamerBufferProbe@Base 6.2.1
- _ZTI21QGstreamerMediaPlayer@Base 6.2.1
- _ZTI21QGstreamerVideoOutput@Base 6.2.1
+ _ZTI20QPlatformMediaPlugin@Base 6.4.0
  _ZTI21QPlatformAudioDecoder@Base 6.2.1
  _ZTI21QPlatformImageCapture@Base 6.2.1
  _ZTI21QPlatformMediaDevices@Base 6.2.1
- _ZTI22QGstreamerVideoOverlay@Base 6.2.1
+ _ZTI21QPlatformVideoDevices@Base 6.4.0
  _ZTI22QPlatformMediaRecorder@Base 6.2.1
  _ZTI24QPlatformMediaFormatInfo@Base 6.2.1
  _ZTI25QPlatformMediaIntegration@Base 6.2.1
@@ -1293,7 +1108,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZTIZN9QMetaType19registerMutableViewI5QListIN12QMediaFormat10VideoCodecEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Base 6.2.1
  _ZTIZN9QMetaType19registerMutableViewI5QListIN14QMediaMetaData3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Base 6.2.1
  _ZTS10QAudioSink@Base 6.2.1
- _ZTS10QGstAppSrc@Base 6.2.1
  _ZTS10QVideoSink@Base 6.2.1
  _ZTS11QAudioInput@Base 6.2.1
  _ZTS12QAudioOutput@Base 6.2.1
@@ -1307,25 +1121,23 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZTS13QImageCapture@Base 6.2.1
  _ZTS13QMediaDevices@Base 6.2.1
  _ZTS14QMediaRecorder@Base 6.2.1
- _ZTS15QGstVideoBuffer@Base 6.2.1
  _ZTS15QPlatformCamera@Base 6.2.1
  _ZTS18QMemoryVideoBuffer@Base 6.2.1
+ _ZTS18QPlatformAudioSink@Base 6.4.0
  _ZTS18QPlatformVideoSink@Base 6.2.1
- _ZTS19QGstreamerVideoSink@Base 6.2.1
+ _ZTS19QAudioDevicePrivate@Base 6.4.0
  _ZTS19QPlatformAudioInput@Base 6.2.1
+ _ZTS19QVideoFrameTextures@Base 6.4.1
  _ZTS20QAbstractVideoBuffer@Base 6.2.1
- _ZTS20QGstreamerAudioInput@Base 6.2.1
  _ZTS20QMediaCaptureSession@Base 6.2.1
  _ZTS20QPlatformAudioOutput@Base 6.2.1
+ _ZTS20QPlatformAudioSource@Base 6.4.0
  _ZTS20QPlatformMediaPlayer@Base 6.2.1
- _ZTS21QGstreamerAudioOutput@Base 6.2.1
- _ZTS21QGstreamerBufferProbe@Base 6.2.1
- _ZTS21QGstreamerMediaPlayer@Base 6.2.1
- _ZTS21QGstreamerVideoOutput@Base 6.2.1
+ _ZTS20QPlatformMediaPlugin@Base 6.4.0
  _ZTS21QPlatformAudioDecoder@Base 6.2.1
  _ZTS21QPlatformImageCapture@Base 6.2.1
  _ZTS21QPlatformMediaDevices@Base 6.2.1
- _ZTS22QGstreamerVideoOverlay@Base 6.2.1
+ _ZTS21QPlatformVideoDevices@Base 6.4.0
  _ZTS22QPlatformMediaRecorder@Base 6.2.1
  _ZTS24QPlatformMediaFormatInfo@Base 6.2.1
  _ZTS25QPlatformMediaIntegration@Base 6.2.1
@@ -1350,7 +1162,6 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZTSZN9QMetaType19registerMutableViewI5QListIN12QMediaFormat10VideoCodecEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Base 6.2.1
  _ZTSZN9QMetaType19registerMutableViewI5QListIN14QMediaMetaData3KeyEE9QIterableI13QMetaSequenceEN9QtPrivate37QSequentialIterableMutableViewFunctorIS4_EEEEbT1_EUlPvSC_E_@Base 6.2.1
  _ZTV10QAudioSink@Base 6.2.1
- _ZTV10QGstAppSrc@Base 6.2.1
  _ZTV10QVideoSink@Base 6.2.1
  _ZTV11QAudioInput@Base 6.2.1
  _ZTV12QAudioOutput@Base 6.2.1
@@ -1364,25 +1175,20 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZTV13QImageCapture@Base 6.2.1
  _ZTV13QMediaDevices@Base 6.2.1
  _ZTV14QMediaRecorder@Base 6.2.1
- _ZTV15QGstVideoBuffer@Base 6.2.1
  _ZTV15QPlatformCamera@Base 6.2.1
  _ZTV18QMemoryVideoBuffer@Base 6.2.1
+ _ZTV18QPlatformAudioSink@Base 6.4.0
  _ZTV18QPlatformVideoSink@Base 6.2.1
- _ZTV19QGstreamerVideoSink@Base 6.2.1
- _ZTV19QPlatformAudioInput@Base 6.2.1
+ _ZTV19QAudioDevicePrivate@Base 6.4.0
  _ZTV20QAbstractVideoBuffer@Base 6.2.1
- _ZTV20QGstreamerAudioInput@Base 6.2.1
  _ZTV20QMediaCaptureSession@Base 6.2.1
- _ZTV20QPlatformAudioOutput@Base 6.2.1
+ _ZTV20QPlatformAudioSource@Base 6.4.0
  _ZTV20QPlatformMediaPlayer@Base 6.2.1
- _ZTV21QGstreamerAudioOutput@Base 6.2.1
- _ZTV21QGstreamerBufferProbe@Base 6.2.1
- _ZTV21QGstreamerMediaPlayer@Base 6.2.1
- _ZTV21QGstreamerVideoOutput@Base 6.2.1
+ _ZTV20QPlatformMediaPlugin@Base 6.4.0
  _ZTV21QPlatformAudioDecoder@Base 6.2.1
  _ZTV21QPlatformImageCapture@Base 6.2.1
  _ZTV21QPlatformMediaDevices@Base 6.2.1
- _ZTV22QGstreamerVideoOverlay@Base 6.2.1
+ _ZTV21QPlatformVideoDevices@Base 6.4.0
  _ZTV22QPlatformMediaRecorder@Base 6.2.1
  _ZTV24QPlatformMediaFormatInfo@Base 6.2.1
  _ZTV25QPlatformMediaIntegration@Base 6.2.1
@@ -1406,50 +1212,11 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIN12QMediaFormat10FileFormatEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Base 6.2.1
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIN12QMediaFormat10VideoCodecEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Base 6.2.1
  (optional=templinst)_ZZN9QMetaType23registerMutableViewImplI5QListIN14QMediaMetaData3KeyEE9QIterableI13QMetaSequenceEEEbSt8functionIFbPvS9_EES_S_E10unregister@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI10QByteArrayE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI10QByteArrayE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI10QByteArrayE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI10QByteArrayE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI4QUrlE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI4QUrlE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI4QUrlE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI4QUrlE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI5QSizeE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI5QSizeE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI5QSizeE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QPointFE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI7QStringE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES5_S6_S8_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS6_E_4_FUNES5_S6_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeI8QVariantE7getDtorEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES5_S6_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIP7QObjectE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES6_S7_S9_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIP7QObjectE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS7_E_4_FUNES6_S7_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIP7QObjectE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES6_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIbE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIdE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIfE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIfE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIfE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIiE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIxE10getCopyCtrEvENUlPKNS_18QMetaTypeInterfaceEPvPKvE_4_FUNES4_S5_S7_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIxE10getMoveCtrEvENUlPKNS_18QMetaTypeInterfaceEPvS5_E_4_FUNES4_S5_S5_@Base 6.2.1
- (optional=templinst)_ZZN9QtPrivate16QMetaTypeForTypeIxE13getDefaultCtrEvENUlPKNS_18QMetaTypeInterfaceEPvE_4_FUNES4_S5_@Base 6.2.1
  _Zls6QDebugN11QVideoFrame10HandleTypeE@Base 6.2.1
  _Zls6QDebugN11QVideoFrame7MapModeE@Base 6.2.1
  _Zls6QDebugN12QAudioDevice4ModeE@Base 6.2.1
  _Zls6QDebugN12QAudioFormat12SampleFormatE@Base 6.2.1
+ _Zls6QDebugN17QVideoFrameFormat10ColorSpaceE@Base 6.4.0
  _Zls6QDebugN17QVideoFrameFormat11PixelFormatE@Base 6.2.1
  _Zls6QDebugN17QVideoFrameFormat15YCbCrColorSpaceE@Base 6.2.1
  _Zls6QDebugN17QVideoFrameFormat9DirectionE@Base 6.2.1
@@ -1462,38 +1229,4 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _Zls6QDebugRK15QMediaTimeRange@Base 6.2.1
  _Zls6QDebugRK17QVideoFrameFormat@Base 6.2.1
  _Zls6QDebugRKN15QMediaTimeRange8IntervalE@Base 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioInput::setAudioDevice(QAudioDevice const&)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioInput::setMuted(bool)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioInput::setVolume(float)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioInput::~QGstreamerAudioInput()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioOutput::setAudioDevice(QAudioDevice const&)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioOutput::setMuted(bool)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioOutput::setVolume(float)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerAudioOutput::~QGstreamerAudioOutput()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::activeTrack(QPlatformMediaPlayer::TrackType)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::availablePlaybackRanges() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::bufferProgress() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::duration() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::media() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::mediaStream() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::metaData() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::pause()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::play()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::playbackRate() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::position() const@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::processBusMessage(QGstreamerMessage const&)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::processSyncMessage(QGstreamerMessage const&)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setActiveTrack(QPlatformMediaPlayer::TrackType, int)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setAudioOutput(QPlatformAudioOutput*)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setMedia(QUrl const&, QIODevice*)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setPlaybackRate(double)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setPosition(long long)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::setVideoSink(QVideoSink*)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::stop()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::trackCount(QPlatformMediaPlayer::TrackType)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::trackMetaData(QPlatformMediaPlayer::TrackType, int)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerMediaPlayer::~QGstreamerMediaPlayer()@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerVideoOverlay::probeCaps(_GstCaps*)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerVideoOverlay::processSyncMessage(QGstreamerMessage const&)@Base" 6.2.1
- (c++)"non-virtual thunk to QGstreamerVideoOverlay::~QGstreamerVideoOverlay()@Base" 6.2.1
  (c++)"non-virtual thunk to QVideoWindow::~QVideoWindow()@Base" 6.2.1
