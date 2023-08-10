@@ -1,39 +1,51 @@
 Source: qt6-multimedia
 Section: libs
 Priority: optional
-Maintainer: Deepin Developer <deepin-dev@deepin.org>
-Uploaders: Deepin Packages Builder <packages@deepin.org>
-Build-Depends: cmake (>= 3.18~),
+Maintainer: Debian Qt/KDE Maintainers <debian-qt-kde@lists.debian.org>
+Uploaders: Patrick Franz <deltaone@debian.org>, Lu YaNing <dluyaning@gmail.com>,
+Build-Depends: cmake (>= 3.24~),
                debhelper-compat (= 13),
                libasound2-dev [linux-any],
+               libavcodec-dev,
+               libavdevice-dev,
+               libavfilter-dev,
+               libavformat-dev,
+               libavutil-dev,
                libgl-dev,
                libgstreamer-plugins-base1.0-dev,
                libgstreamer1.0-dev,
-               libqt6opengl6-dev (>= 6.2.4~),
-               libqt6shadertools6-dev (>= 6.2.4~),
-               libqt6svg6-dev (>= 6.2.4~),
+               libpulse-dev,
                libssl-dev,
+               libswscale-dev,
+               libva-dev [linux-any],
                libvulkan-dev [linux-any],
                ninja-build,
                pkg-config,
                pkg-kde-tools,
-               qml6-module-qtquick (>= 6.2.4~),
-               qml6-module-qttest (>= 6.2.4~),
-               qt6-base-dev (>= 6.2.4~),
-               qt6-base-private-dev (>= 6.2.4~),
-               qt6-declarative-dev (>= 6.2.4~),
-               qt6-declarative-private-dev (>= 6.2.4~),
+               qml6-module-qtquick (>= 6.4.2+dfsg~),
+               qml6-module-qttest (>= 6.4.2+dfsg~),
+               qt6-base-dev (>= 6.4.2+dfsg~),
+               qt6-base-private-dev (>= 6.4.2+dfsg~),
+               qt6-declarative-dev (>= 6.4.2+dfsg~),
+               qt6-declarative-private-dev (>= 6.4.2+dfsg~),
+               qt6-quick3d-dev (>= 6.4.2~),
+               qt6-shadertools-dev (>= 6.4.2~),
+               qt6-svg-dev (>= 6.4.2~),
                xauth <!nocheck>,
                xvfb <!nocheck>,
-Standards-Version: 4.6.0
+Build-Depends-Indep: qt6-base-dev (>= 6.4~) <!nodoc>,
+                     qt6-documentation-tools (>= 6.4~) <!nodoc>,
+Standards-Version: 4.6.2
 Homepage: https://www.qt.io/developers/
+Vcs-Browser: https://salsa.debian.org/qt-kde-team/qt6/qt6-multimedia
+Vcs-Git: https://salsa.debian.org/qt-kde-team/qt6/qt6-multimedia.git
 Rules-Requires-Root: no
 
 Package: libqt6multimedia6
 Architecture: any
 Multi-Arch: same
-Pre-Depends: ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
 Description: Qt 6 Multimedia library
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -44,8 +56,8 @@ Description: Qt 6 Multimedia library
 Package: libqt6multimediaquick6
 Architecture: any
 Multi-Arch: same
-Pre-Depends: ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
 Description: Qt 6 Multimedia Quick library
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -56,8 +68,8 @@ Description: Qt 6 Multimedia Quick library
 Package: libqt6multimediawidgets6
 Architecture: any
 Multi-Arch: same
-Pre-Depends: ${misc:Pre-Depends}
-Depends: ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
 Description: Qt 6 Multimedia Widgets library
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
@@ -65,16 +77,40 @@ Description: Qt 6 Multimedia Widgets library
  This package contains a set of widgets to play and record media, and manage a
  collection of media content.
 
+Package: libqt6spatialaudio6
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends},
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Description: Qt 6 Spatial Audio library
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains a rich set of QML types and C++ classes to implement
+ sound fields in 3D space.
+
 Package: qml6-module-qtmultimedia
 Architecture: any
 Multi-Arch: same
-Pre-Depends: ${misc:Pre-Depends}
-Depends: qml6-module-qtquick, ${misc:Depends}, ${shlibs:Depends}
+Pre-Depends: ${misc:Pre-Depends},
+Depends: qml6-module-qtquick, ${misc:Depends}, ${shlibs:Depends},
 Description: Qt 6 Multimedia QML module
  Qt is a cross-platform C++ application framework. Qt's primary feature
  is its rich set of widgets that provide standard GUI functionality.
  .
  This package contains the Multimedia QML module for QtDeclarative.
+
+Package: qml6-module-qtquick3d-spatialaudio
+Architecture: any
+Multi-Arch: same
+Pre-Depends: ${misc:Pre-Depends},
+Depends: qml6-module-qtquick, ${misc:Depends}, ${shlibs:Depends},
+Description: Qt 6 Multimedia QML spatial audio module
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the Multimedia QML spatial audio module for
+ QtDeclarative.
 
 Package: qt6-multimedia-dev
 Architecture: any
@@ -84,6 +120,7 @@ Depends: libglib2.0-dev,
          libqt6multimedia6 (= ${binary:Version}),
          libqt6multimediaquick6 (= ${binary:Version}),
          libqt6multimediawidgets6 (= ${binary:Version}),
+         libqt6spatialaudio6 (= ${binary:Version}),
          qt6-base-dev,
          ${misc:Depends},
 Description: Qt 6 Multimedia - development files
@@ -92,3 +129,36 @@ Description: Qt 6 Multimedia - development files
  .
  This package contains the development files needed to build Qt applications
  using Qt Multimedia libraries.
+
+Package: qt6-multimedia-doc
+Architecture: all
+Section: doc
+Depends: qt6-base-doc, ${misc:Depends},
+Multi-Arch: foreign
+Description: Qt 6 Multimedia documentation
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the documentation for Qt 6 Multimedia.
+
+Package: qt6-multimedia-doc-html
+Architecture: all
+Section: doc
+Depends: qt6-base-doc-html, ${misc:Depends},
+Multi-Arch: foreign
+Description: Qt 6 Multimedia HTML documentation
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the HTML documentation for Qt 6 Multimedia.
+
+Package: qt6-multimedia-examples
+Architecture: any
+Multi-Arch: same
+Section: misc
+Depends: ${misc:Depends}, ${shlibs:Depends},
+Description: Qt 6 Multimedia examples
+ Qt is a cross-platform C++ application framework. Qt's primary feature
+ is its rich set of widgets that provide standard GUI functionality.
+ .
+ This package contains the examples for the Qt Multimedia submodule.

@@ -44,7 +44,6 @@ resources.files = \
     qml/qmlvideo/CameraSpin.qml \
     qml/qmlvideo/Content.qml \
     qml/qmlvideo/ErrorDialog.qml \
-    qml/qmlvideo/FileBrowser.qml \
     qml/qmlvideo/Scene.qml \
     qml/qmlvideo/SceneBasic.qml \
     qml/qmlvideo/SceneDrag.qml \
@@ -86,12 +85,3 @@ EXAMPLE_FILES += \
     qmlvideo.png \
     qmlvideo.svg
 
-macos {
-    macx-xcode {
-        code_sign_entitlements.name = CODE_SIGN_ENTITLEMENTS
-        code_sign_entitlements.value = $$PWD/$${TARGET}.entitlements
-        QMAKE_MAC_XCODE_SETTINGS += code_sign_entitlements
-    } else {
-        QMAKE_POST_LINK += "codesign --sign - --entitlements $$PWD/$${TARGET}.entitlements $${OUT_PWD}/$${TARGET}.app"
-    }
-}
