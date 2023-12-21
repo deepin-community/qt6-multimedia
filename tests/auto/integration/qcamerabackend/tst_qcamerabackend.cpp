@@ -9,6 +9,7 @@
 #include <QtCore/qlocale.h>
 #include <QDebug>
 #include <QVideoSink>
+#include <QMediaPlayer>
 
 #include <private/qplatformcamera_p.h>
 #include <private/qplatformimagecapture_p.h>
@@ -97,6 +98,14 @@ public Q_SLOTS:
         if (surfaceFormat.pixelFormat() == cameraFormat.pixelFormat()
             && surfaceFormat.frameSize() == cameraFormat.resolution()) {
             formatMismatch = 0;
+#ifdef Q_OS_ANDROID
+        } else if ((surfaceFormat.pixelFormat() == QVideoFrameFormat::Format_YUV420P
+                   || surfaceFormat.pixelFormat() == QVideoFrameFormat::Format_NV12)
+                  && (cameraFormat.pixelFormat() == QVideoFrameFormat::Format_YUV420P
+                   || cameraFormat.pixelFormat() == QVideoFrameFormat::Format_NV12)
+            && surfaceFormat.frameSize() == cameraFormat.resolution()) {
+            formatMismatch = 0;
+#endif
         } else {
             formatMismatch = 1;
         }
@@ -214,7 +223,7 @@ void tst_QCameraBackend::testCameraActive()
     QCOMPARE(camera.error(), QCamera::NoError);
 
     camera.start();
-    QCOMPARE(camera.isActive(), true);
+    QTRY_COMPARE(camera.isActive(), true);
     QTRY_COMPARE(activeChangedSignal.size(), 1);
     QCOMPARE(activeChangedSignal.last().first().value<bool>(), true);
 
@@ -227,6 +236,10 @@ void tst_QCameraBackend::testCameraActive()
 
 void tst_QCameraBackend::testCameraStartParallel()
 {
+#ifdef Q_OS_ANDROID
+    QSKIP("Multi-camera feature is currently not supported on Android. "
+          "Cannot open same device twice.");
+#endif
     if (noCamera)
         QSKIP("No camera available");
 
@@ -506,7 +519,7 @@ void tst_QCameraBackend::testExposureMode()
     camera.setExposureMode(QCamera::ExposureAuto);
     QCOMPARE(camera.exposureMode(), QCamera::ExposureAuto);
     camera.start();
-    QVERIFY(camera.isActive());
+    QTRY_VERIFY(camera.isActive());
     QCOMPARE(camera.exposureMode(), QCamera::ExposureAuto);
 
     // Manual
@@ -571,32 +584,39 @@ void tst_QCameraBackend::testVideoRecording()
     QTRY_VERIFY(camera->isActive());
 
     QTRY_VERIFY(camera->isActive());
-    for (int recordings = 0; recordings < 2; ++recordings) {
-        //record 200ms clip
-        recorder.record();
-        durationChanged.clear();
-        if (!recorderErrorSignal.empty() || recorderErrorSignal.wait(100)) {
-            QCOMPARE(recorderErrorSignal.last().first().toInt(), QMediaRecorder::FormatError);
-            break;
-        }
 
-        QTRY_VERIFY(durationChanged.size());
-
-        QCOMPARE(recorder.metaData(), metaData);
-
-        recorderStateChanged.clear();
-        recorder.stop();
-        QTRY_VERIFY(recorderStateChanged.size() > 0);
-        QVERIFY(recorder.recorderState() == QMediaRecorder::StoppedState);
-
-        QVERIFY(errorSignal.isEmpty());
-        QVERIFY(recorderErrorSignal.isEmpty());
-
-        QString fileName = recorder.actualLocation().toLocalFile();
-        QVERIFY(!fileName.isEmpty());
-        QVERIFY(QFileInfo(fileName).size() > 0);
-        QFile(fileName).remove();
+    recorder.record();
+    durationChanged.clear();
+    if (!recorderErrorSignal.empty() || recorderErrorSignal.wait(550)) {
+        QCOMPARE(recorderErrorSignal.last().first().toInt(), QMediaRecorder::FormatError);
+        return;
     }
+
+    QTRY_VERIFY(durationChanged.size());
+
+    QCOMPARE(recorder.metaData(), metaData);
+
+    recorderStateChanged.clear();
+    recorder.stop();
+    QTRY_VERIFY(recorderStateChanged.size() > 0);
+    QVERIFY(recorder.recorderState() == QMediaRecorder::StoppedState);
+
+    QVERIFY(errorSignal.isEmpty());
+    QVERIFY(recorderErrorSignal.isEmpty());
+
+    QString fileName = recorder.actualLocation().toLocalFile();
+    QVERIFY(!fileName.isEmpty());
+    QVERIFY(QFileInfo(fileName).size() > 0);
+
+    QMediaPlayer player;
+    player.setSource(fileName);
+    QCOMPARE_EQ(player.metaData().value(QMediaMetaData::Resolution).toSize(), QSize(320, 240));
+    QCOMPARE_GT(player.duration(), 350);
+    QCOMPARE_LT(player.duration(), 550);
+
+    // TODO: integrate with a virtual camera and check mediaplayer output
+
+    QFile(fileName).remove();
 }
 
 void tst_QCameraBackend::testNativeMetadata()
@@ -654,8 +674,8 @@ void tst_QCameraBackend::testNativeMetadata()
 
     // QMediaRecorder::metaData() can only test that QMediaMetaData is set properly on the recorder.
     // Use QMediaPlayer to test that the native metadata is properly set on the track
-    QMediaPlayer player;
     QAudioOutput output;
+    QMediaPlayer player;
     player.setAudioOutput(&output);
 
     QSignalSpy metadataChangedSpy(&player, SIGNAL(metaDataChanged()));

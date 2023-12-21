@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "avfvideobuffer_p.h"
-#include <private/qrhi_p.h>
-#include <private/qrhimetal_p.h>
-#include <private/qrhigles2_p.h>
+#include <rhi/qrhi.h>
 #include <CoreVideo/CVMetalTexture.h>
 #include <CoreVideo/CVMetalTextureCache.h>
 #include <QtGui/qopenglcontext.h>
@@ -136,6 +134,7 @@ quint64 AVFVideoBuffer::textureHandle(int plane) const
             height = textureDescription->heightForPlane(height, plane);
 
             // Create a CoreVideo pixel buffer backed Metal texture image from the texture cache.
+            QMutexLocker locker(sink->textureCacheMutex());
             auto ret = CVMetalTextureCacheCreateTextureFromImage(
                             kCFAllocatorDefault,
                             sink->cvMetalTextureCache,

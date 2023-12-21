@@ -21,7 +21,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcAndroidCamera, "qt.multimedia.android.camera")
+static Q_LOGGING_CATEGORY(lcAndroidCamera, "qt.multimedia.android.camera")
 
 static const char QtCameraListenerClassName[] = "org/qtproject/qt/android/multimedia/QtCameraListener";
 
@@ -125,10 +125,9 @@ static void notifyPictureCaptured(JNIEnv *env, jobject, int id, jbyteArray data)
         bytesPerLine = -1;
     }
 
-    QVideoFrame frame(new QMemoryVideoBuffer(bytes, bytesPerLine),
-                      QVideoFrameFormat(pictureSize, qt_pixelFormatFromAndroidImageFormat(format)));
+    auto pictureFormat = qt_pixelFormatFromAndroidImageFormat(format);
 
-    emit camera->pictureCaptured(frame);
+    emit camera->pictureCaptured(bytes, pictureFormat, pictureSize, bytesPerLine);
 }
 
 static void notifyNewPreviewFrame(JNIEnv *env, jobject, int id, jbyteArray data,
@@ -316,7 +315,7 @@ AndroidCamera::~AndroidCamera()
 
 AndroidCamera *AndroidCamera::open(int cameraId)
 {
-    if (!qt_androidRequestCameraPermission())
+    if (!qt_androidCheckCameraPermission())
         return nullptr;
 
     AndroidCameraPrivate *d = new AndroidCameraPrivate();
@@ -765,7 +764,7 @@ QJniObject AndroidCamera::getCameraObject()
 
 int AndroidCamera::getNumberOfCameras()
 {
-    if (!qt_androidRequestCameraPermission())
+    if (!qt_androidCheckCameraPermission())
         return 0;
 
     return QJniObject::callStaticMethod<jint>("android/hardware/Camera",
@@ -800,6 +799,12 @@ void AndroidCamera::getCameraInfo(int id, QCameraDevicePrivate *info)
         break;
     default:
         break;
+    }
+    // Add a number to allow correct access to cameras on systems with two
+    // (and more) front/back cameras
+    if (id > 1) {
+        info->id.append(QByteArray::number(id));
+        info->description.append(QString(" %1").arg(id));
     }
 }
 
@@ -1199,6 +1204,7 @@ bool AndroidCameraPrivate::setPreviewDisplay(void *surfaceHolder)
 void AndroidCameraPrivate::setDisplayOrientation(int degrees)
 {
     m_camera.callMethod<void>("setDisplayOrientation", "(I)V", degrees);
+    m_cameraListener.callMethod<void>("setPhotoRotation", "(I)V", degrees);
 }
 
 bool AndroidCameraPrivate::isZoomSupported()
@@ -1780,3 +1786,4 @@ bool AndroidCamera::registerNativeMethods()
 QT_END_NAMESPACE
 
 #include "androidcamera.moc"
+#include "moc_androidcamera_p.cpp"

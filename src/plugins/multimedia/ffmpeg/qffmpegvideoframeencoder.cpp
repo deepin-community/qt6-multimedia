@@ -5,306 +5,248 @@
 #include "qffmpegvideobuffer_p.h"
 #include "qffmpegmediaformatinfo_p.h"
 #include "qffmpegencoderoptions_p.h"
+#include "qffmpegvideoencoderutils_p.h"
 #include "private/qplatformmediarecorder_p.h"
 #include "private/qmultimediautils_p.h"
 #include <qloggingcategory.h>
 
-extern "C" {
-#include <libavutil/pixdesc.h>
-}
-
-/* Infrastructure for HW acceleration goes into this file. */
-
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcVideoFrameEncoder, "qt.multimedia.ffmpeg.videoencoder")
+static Q_LOGGING_CATEGORY(qLcVideoFrameEncoder, "qt.multimedia.ffmpeg.videoencoder");
 
 namespace QFFmpeg {
 
-VideoFrameEncoder::Data::~Data()
+std::unique_ptr<VideoFrameEncoder>
+VideoFrameEncoder::create(const QMediaEncoderSettings &encoderSettings, const QSize &sourceSize,
+                          qreal sourceFrameRate, AVPixelFormat sourceFormat,
+                          AVPixelFormat sourceSWFormat, AVFormatContext *formatContext)
 {
-    if (converter)
-        sws_freeContext(converter);
-    avcodec_free_context(&codecContext);
+    Q_ASSERT(isSwPixelFormat(sourceSWFormat));
+    Q_ASSERT(isHwPixelFormat(sourceFormat) || sourceSWFormat == sourceFormat);
+
+    std::unique_ptr<VideoFrameEncoder> result(new VideoFrameEncoder);
+
+    result->m_settings = encoderSettings;
+    result->m_sourceSize = sourceSize;
+    result->m_sourceFormat = sourceFormat;
+
+    // Temporary: check isSwPixelFormat because of android issue (QTBUG-116836)
+    result->m_sourceSWFormat = isSwPixelFormat(sourceFormat) ? sourceFormat : sourceSWFormat;
+
+    if (!result->m_settings.videoResolution().isValid())
+        result->m_settings.setVideoResolution(sourceSize);
+
+    if (result->m_settings.videoFrameRate() <= 0.)
+        result->m_settings.setVideoFrameRate(sourceFrameRate);
+
+    if (!result->initCodec() || !result->initTargetFormats()
+        || !result->initCodecContext(formatContext)) {
+        return nullptr;
+    }
+
+    // TODO: make VideoFrameEncoder::private and do openning here
+    // if (!open()) {
+    //    m_error = QMediaRecorder::FormatError;
+    //    m_errorStr = QLatin1StringView("Cannot open codec");
+    //    return;
+    // }
+
+    result->updateConversions();
+
+    return result;
 }
 
-VideoFrameEncoder::VideoFrameEncoder(const QMediaEncoderSettings &encoderSettings,
-                                     const QSize &sourceSize, float frameRate, AVPixelFormat sourceFormat, AVPixelFormat swFormat)
-    : d(new Data)
+bool VideoFrameEncoder::initCodec()
 {
-    d->settings = encoderSettings;
-    d->frameRate = frameRate;
-    d->sourceSize = sourceSize;
+    const auto qVideoCodec = m_settings.videoCodec();
+    const auto codecID = QFFmpegMediaFormatInfo::codecIdForVideoCodec(qVideoCodec);
+    const auto resolution = m_settings.videoResolution();
 
-    if (!d->settings.videoResolution().isValid())
-        d->settings.setVideoResolution(d->sourceSize);
+    std::tie(m_codec, m_accel) = findHwEncoder(codecID, resolution);
 
-    d->sourceFormat = sourceFormat;
-    d->sourceSWFormat = swFormat;
+    if (!m_codec)
+        m_codec = findSwEncoder(codecID, m_sourceSWFormat);
 
-    auto qVideoCodec = encoderSettings.videoCodec();
-    auto codecID = QFFmpegMediaFormatInfo::codecIdForVideoCodec(qVideoCodec);
+    if (!m_codec) {
+        qWarning() << "Could not find encoder for codecId" << codecID;
+        return false;
+    }
 
-#ifndef QT_DISABLE_HW_ENCODING
-    auto [preferredTypes, size] = HWAccel::preferredDeviceTypes();
-    for (qsizetype i = 0; i < size; i++) {
-        auto accel = HWAccel::create(preferredTypes[i]);
-        if (!accel)
-            continue;
+    qCDebug(qLcVideoFrameEncoder) << "found encoder" << m_codec->name << "for id" << m_codec->id;
 
-        auto matchesSizeConstraints = [&]() -> bool {
-            auto *constraints = av_hwdevice_get_hwframe_constraints(accel->hwDeviceContextAsBuffer(), nullptr);
-            if (!constraints)
-                return true;
-                // Check size constraints
-            bool result = (d->sourceSize.width() >= constraints->min_width && d->sourceSize.height() >= constraints->min_height &&
-                           d->sourceSize.width() <= constraints->max_width && d->sourceSize.height() <= constraints->max_height);
-            av_hwframe_constraints_free(&constraints);
-            return result;
-        };
-
-        if (!matchesSizeConstraints())
-            continue;
-
-        d->codec = accel->hardwareEncoderForCodecId(codecID);
-        if (!d->codec)
-            continue;
-        d->accel = std::move(accel);
-        break;
+#ifdef Q_OS_WINDOWS
+    // TODO: investigate, there might be more encoders not supporting odd resolution
+    if (strcmp(m_codec->name, "h264_mf") == 0) {
+        auto makeEven = [](int size) { return size & ~1; };
+        const QSize fixedResolution(makeEven(resolution.width()), makeEven(resolution.height()));
+        if (fixedResolution != resolution) {
+            qCDebug(qLcVideoFrameEncoder) << "Fix odd video resolution for codec" << m_codec->name
+                                          << ":" << resolution << "->" << fixedResolution;
+            m_settings.setVideoResolution(fixedResolution);
+        }
     }
 #endif
 
-    if (!d->accel) {
-        d->codec = avcodec_find_encoder(codecID);
-        if (!d->codec) {
-            qWarning() << "Could not find encoder for codecId" << codecID;
-            d = {};
-            return;
-        }
+    auto fixedResolution = adjustVideoResolution(m_codec, m_settings.videoResolution());
+    if (resolution != fixedResolution) {
+        qCDebug(qLcVideoFrameEncoder) << "Fix odd video resolution for codec" << m_codec->name
+                                      << ":" << resolution << "->" << fixedResolution;
+
+        m_settings.setVideoResolution(fixedResolution);
     }
-    auto supportsFormat = [&](AVPixelFormat fmt) {
-        if (auto fmts = d->codec->pix_fmts) {
-            for (; *fmts != AV_PIX_FMT_NONE; ++fmts)
-                if (*fmts == fmt)
-                    return true;
-        }
+
+    if (m_codec->supported_framerates && qLcVideoFrameEncoder().isEnabled(QtDebugMsg))
+        for (auto rate = m_codec->supported_framerates; rate->num && rate->den; ++rate)
+            qCDebug(qLcVideoFrameEncoder) << "supported frame rate:" << *rate;
+
+    m_codecFrameRate = adjustFrameRate(m_codec->supported_framerates, m_settings.videoFrameRate());
+    qCDebug(qLcVideoFrameEncoder) << "Adjusted frame rate:" << m_codecFrameRate;
+
+    return true;
+}
+
+bool VideoFrameEncoder::initTargetFormats()
+{
+    m_targetFormat = findTargetFormat(m_sourceFormat, m_sourceSWFormat, m_codec, m_accel.get());
+
+    if (m_targetFormat == AV_PIX_FMT_NONE) {
+        qWarning() << "Could not find target format for codecId" << m_codec->id;
         return false;
-    };
-
-    d->targetFormat = d->sourceFormat;
-
-    if (!supportsFormat(d->sourceFormat)) {
-        if (supportsFormat(swFormat))
-            d->targetFormat = swFormat;
-        else if (d->codec->pix_fmts)
-            // Take first format the encoder supports. Might want to improve upon this
-            d->targetFormat = *d->codec->pix_fmts;
-        else
-            qWarning() << "Cannot set target format";
     }
 
-    auto desc = av_pix_fmt_desc_get(d->sourceFormat);
-    d->sourceFormatIsHWFormat = desc->flags & AV_PIX_FMT_FLAG_HWACCEL;
-    desc = av_pix_fmt_desc_get(d->targetFormat);
-    d->targetFormatIsHWFormat = desc->flags & AV_PIX_FMT_FLAG_HWACCEL;
+    if (isHwPixelFormat(m_targetFormat)) {
+        Q_ASSERT(m_accel);
 
-    bool needToScale = d->sourceSize != d->settings.videoResolution();
-    bool zeroCopy = d->sourceFormatIsHWFormat && d->sourceFormat == d->targetFormat && !needToScale;
+        m_targetSWFormat = findTargetSWFormat(m_sourceSWFormat, m_codec, *m_accel);
 
-    if (zeroCopy)
-        // no need to initialize any converters
-        return;
-
-    if (d->sourceFormatIsHWFormat) {
-        // if source and target formats don't agree, but the source is a HW format or sizes do't agree, we need to download
-        if (d->sourceFormat != d->targetFormat || needToScale)
-            d->downloadFromHW = true;
-    } else {
-        d->sourceSWFormat = d->sourceFormat;
-    }
-
-    if (d->targetFormatIsHWFormat) {
-        Q_ASSERT(d->accel);
-        // if source and target formats don't agree, but the target is a HW format, we need to upload
-        if (d->sourceFormat != d->targetFormat || needToScale) {
-            d->uploadToHW = true;
-
-            // determine the format used by the encoder.
-            // We prefer YUV422 based formats such as NV12 or P010. Selection trues to find the best matching
-            // format for the encoder depending on the bit depth of the source format
-            auto desc = av_pix_fmt_desc_get(d->sourceSWFormat);
-            int sourceDepth = desc->comp[0].depth;
-
-            d->targetSWFormat = AV_PIX_FMT_NONE;
-
-            auto *constraints = av_hwdevice_get_hwframe_constraints(d->accel->hwDeviceContextAsBuffer(), nullptr);
-            auto *f = constraints->valid_sw_formats;
-            int score = INT_MIN;
-            while (*f != AV_PIX_FMT_NONE) {
-                auto calcScore = [&](AVPixelFormat fmt) -> int {
-                    auto *desc = av_pix_fmt_desc_get(fmt);
-                    int s = 0;
-                    if (fmt == d->sourceSWFormat)
-                        // prefer exact matches
-                        s += 10;
-                    if (desc->comp[0].depth == sourceDepth)
-                        s += 100;
-                    else if (desc->comp[0].depth < sourceDepth)
-                        s -= 100;
-                    if (desc->log2_chroma_h == 1)
-                        s += 1;
-                    if (desc->log2_chroma_w == 1)
-                        s += 1;
-                    if (desc->flags & AV_PIX_FMT_FLAG_BE)
-                        s -= 10;
-                    if (desc->flags & AV_PIX_FMT_FLAG_PAL)
-                        // we don't want paletted formats
-                        s -= 10000;
-                    if (desc->flags & AV_PIX_FMT_FLAG_RGB)
-                        // we don't want RGB formats
-                        s -= 1000;
-                    if (desc->flags & AV_PIX_FMT_FLAG_HWACCEL)
-                        // we really don't want HW accelerated formats here
-                        s -= 1000000;
-                    qCDebug(qLcVideoFrameEncoder) << "checking format" << fmt << Qt::hex << desc->flags << desc->comp[0].depth
-                             << desc->log2_chroma_h << desc->log2_chroma_w << "score:" << s;
-                    return s;
-                };
-
-                int s = calcScore(*f);
-                if (s > score) {
-                    d->targetSWFormat = *f;
-                    score = s;
-                }
-                ++f;
-            }
-            if (d->targetSWFormat == AV_PIX_FMT_NONE) // shouldn't happen
-                d->targetSWFormat = *constraints->valid_sw_formats;
-
-            qCDebug(qLcVideoFrameEncoder) << "using format" << d->targetSWFormat << "as transfer format.";
-
-            av_hwframe_constraints_free(&constraints);
-            // need to create a frames context to convert the input data
-            d->accel->createFramesContext(d->targetSWFormat, sourceSize);
+        if (m_targetSWFormat == AV_PIX_FMT_NONE) {
+            qWarning() << "Cannot find software target format. sourceSWFormat:" << m_sourceSWFormat
+                       << "targetFormat:" << m_targetFormat;
+            return false;
         }
+
+        m_accel->createFramesContext(m_targetSWFormat, m_settings.videoResolution());
+        if (!m_accel->hwFramesContextAsBuffer())
+            return false;
     } else {
-        d->targetSWFormat = d->targetFormat;
+        m_targetSWFormat = m_targetFormat;
     }
 
-    if (d->sourceSWFormat != d->targetSWFormat || needToScale) {
-        auto resolution = d->settings.videoResolution();
-        qCDebug(qLcVideoFrameEncoder) << "camera and encoder use different formats:" << d->sourceSWFormat << d->targetSWFormat;
-        d->converter = sws_getContext(d->sourceSize.width(), d->sourceSize.height(), d->sourceSWFormat,
-                                   resolution.width(), resolution.height(), d->targetSWFormat,
-                                   SWS_FAST_BILINEAR, nullptr, nullptr, nullptr);
-    }
+    return true;
 }
 
-VideoFrameEncoder::~VideoFrameEncoder()
-{
-}
+VideoFrameEncoder::~VideoFrameEncoder() = default;
 
-void QFFmpeg::VideoFrameEncoder::initWithFormatContext(AVFormatContext *formatContext)
+bool QFFmpeg::VideoFrameEncoder::initCodecContext(AVFormatContext *formatContext)
 {
-    d->stream = avformat_new_stream(formatContext, nullptr);
-    d->stream->id = formatContext->nb_streams - 1;
+    m_stream = avformat_new_stream(formatContext, nullptr);
+    m_stream->id = formatContext->nb_streams - 1;
     //qCDebug(qLcVideoFrameEncoder) << "Video stream: index" << d->stream->id;
-    d->stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
-    d->stream->codecpar->codec_id = d->codec->id;
+    m_stream->codecpar->codec_type = AVMEDIA_TYPE_VIDEO;
+    m_stream->codecpar->codec_id = m_codec->id;
 
     // Apples HEVC decoders don't like the hev1 tag ffmpeg uses by default, use hvc1 as the more commonly accepted tag
-    if (d->codec->id == AV_CODEC_ID_HEVC)
-        d->stream->codecpar->codec_tag = MKTAG('h','v','c','1');
+    if (m_codec->id == AV_CODEC_ID_HEVC)
+        m_stream->codecpar->codec_tag = MKTAG('h', 'v', 'c', '1');
+
+    const auto resolution = m_settings.videoResolution();
 
     // ### Fix hardcoded values
-    d->stream->codecpar->format = d->targetFormat;
-    d->stream->codecpar->width = d->settings.videoResolution().width();
-    d->stream->codecpar->height = d->settings.videoResolution().height();
-    d->stream->codecpar->sample_aspect_ratio = AVRational{1, 1};
-    float requestedRate = d->frameRate;
-    d->stream->time_base = AVRational{ 1, (int)(requestedRate*1000) };
+    m_stream->codecpar->format = m_targetFormat;
+    m_stream->codecpar->width = resolution.width();
+    m_stream->codecpar->height = resolution.height();
+    m_stream->codecpar->sample_aspect_ratio = AVRational{ 1, 1 };
 
-    float delta = 1e10;
-    if (d->codec->supported_framerates) {
-        // codec only supports fixed frame rates
-        auto *best = d->codec->supported_framerates;
-        qCDebug(qLcVideoFrameEncoder) << "Finding fixed rate:";
-        for (auto *f = d->codec->supported_framerates; f->num != 0; f++) {
-            auto maybeRate = toFloat(*f);
-            if (!maybeRate)
-                continue;
-            float d = qAbs(*maybeRate - requestedRate);
-            qCDebug(qLcVideoFrameEncoder) << "    " << f->num << f->den << d;
-            if (d < delta) {
-                best = f;
-                delta = d;
-            }
-        }
-        qCDebug(qLcVideoFrameEncoder) << "Fixed frame rate required. Requested:" << requestedRate << "Using:" << best->num << "/" << best->den;
-        d->stream->time_base = *best;
-        requestedRate = toFloat(*best).value_or(0.f);
-    }
+    Q_ASSERT(m_codec);
 
-    Q_ASSERT(d->codec);
-    d->codecContext = avcodec_alloc_context3(d->codec);
-    if (!d->codecContext) {
+    m_stream->time_base = adjustFrameTimeBase(m_codec->supported_framerates, m_codecFrameRate);
+    m_codecContext.reset(avcodec_alloc_context3(m_codec));
+    if (!m_codecContext) {
         qWarning() << "Could not allocate codec context";
-        d = {};
-        return;
+        return false;
     }
 
-    avcodec_parameters_to_context(d->codecContext, d->stream->codecpar);
-    d->codecContext->time_base = d->stream->time_base;
-    qCDebug(qLcVideoFrameEncoder) << "requesting time base" << d->codecContext->time_base.num << d->codecContext->time_base.den;
-    auto [num, den] = qRealToFraction(requestedRate);
-    d->codecContext->framerate = { num, den };
-    if (d->accel) {
-        auto deviceContext = d->accel->hwDeviceContextAsBuffer();
-        if (deviceContext)
-            d->codecContext->hw_device_ctx = av_buffer_ref(deviceContext);
-        auto framesContext = d->accel->hwFramesContextAsBuffer();
-        if (framesContext)
-            d->codecContext->hw_frames_ctx = av_buffer_ref(framesContext);
+    avcodec_parameters_to_context(m_codecContext.get(), m_stream->codecpar);
+    m_codecContext->time_base = m_stream->time_base;
+    qCDebug(qLcVideoFrameEncoder) << "codecContext time base" << m_codecContext->time_base.num
+                                  << m_codecContext->time_base.den;
+
+    m_codecContext->framerate = m_codecFrameRate;
+    m_codecContext->pix_fmt = m_targetFormat;
+    m_codecContext->width = resolution.width();
+    m_codecContext->height = resolution.height();
+
+    if (m_accel) {
+        auto deviceContext = m_accel->hwDeviceContextAsBuffer();
+        Q_ASSERT(deviceContext);
+        m_codecContext->hw_device_ctx = av_buffer_ref(deviceContext);
+
+        if (auto framesContext = m_accel->hwFramesContextAsBuffer())
+            m_codecContext->hw_frames_ctx = av_buffer_ref(framesContext);
     }
+
+    return true;
 }
 
 bool VideoFrameEncoder::open()
 {
-    AVDictionary *opts = nullptr;
-    applyVideoEncoderOptions(d->settings, d->codec->name, d->codecContext, &opts);
-    int res = avcodec_open2(d->codecContext, d->codec, &opts);
+    if (!m_codecContext)
+        return false;
+
+    AVDictionaryHolder opts;
+    applyVideoEncoderOptions(m_settings, m_codec->name, m_codecContext.get(), opts);
+    int res = avcodec_open2(m_codecContext.get(), m_codec, opts);
     if (res < 0) {
-        avcodec_free_context(&d->codecContext);
+        m_codecContext.reset();
         qWarning() << "Couldn't open codec for writing" << err2str(res);
         return false;
     }
-    qCDebug(qLcVideoFrameEncoder) << "video codec opened" << res << "time base" << d->codecContext->time_base.num << d->codecContext->time_base.den;
-    d->stream->time_base = d->codecContext->time_base;
+    qCDebug(qLcVideoFrameEncoder) << "video codec opened" << res << "time base"
+                                  << m_codecContext->time_base;
     return true;
 }
 
-qint64 VideoFrameEncoder::getPts(qint64 us)
+qint64 VideoFrameEncoder::getPts(qint64 us) const
 {
-    Q_ASSERT(d);
-    qint64 div = 1'000'000 * d->stream->time_base.num;
-    return div != 0 ? (us * d->stream->time_base.den + div / 2) / div : 0;
+    qint64 div = 1'000'000 * m_stream->time_base.num;
+    return div != 0 ? (us * m_stream->time_base.den + div / 2) / div : 0;
+}
+
+const AVRational &VideoFrameEncoder::getTimeBase() const
+{
+    return m_stream->time_base;
 }
 
 int VideoFrameEncoder::sendFrame(AVFrameUPtr frame)
 {
-    if (!d->codecContext) {
+    if (!m_codecContext) {
         qWarning() << "codec context is not initialized!";
         return AVERROR(EINVAL);
     }
 
     if (!frame)
-        return avcodec_send_frame(d->codecContext, frame.get());
-    auto pts = frame->pts;
+        return avcodec_send_frame(m_codecContext.get(), frame.get());
 
-    if (d->downloadFromHW) {
+    if (frame->format != m_sourceFormat) {
+        qWarning() << "Frame format has changed:" << m_sourceFormat << "->" << frame->format;
+        return AVERROR(EINVAL);
+    }
+
+    const QSize frameSize(frame->width, frame->height);
+    if (frameSize != m_sourceSize) {
+        qCDebug(qLcVideoFrameEncoder) << "Update conversions on the fly. Source size"
+                                      << m_sourceSize << "->" << frameSize;
+        m_sourceSize = frameSize;
+        updateConversions();
+    }
+
+    int64_t pts = 0;
+    AVRational timeBase = {};
+    getAVFrameTime(*frame, pts, timeBase);
+
+    if (m_downloadFromHW) {
         auto f = makeAVFrame();
 
-        f->format = d->sourceSWFormat;
         int err = av_hwframe_transfer_data(f.get(), frame.get(), 0);
         if (err < 0) {
             qCDebug(qLcVideoFrameEncoder) << "Error transferring frame data to surface." << err2str(err);
@@ -314,19 +256,25 @@ int VideoFrameEncoder::sendFrame(AVFrameUPtr frame)
         frame = std::move(f);
     }
 
-    if (d->converter) {
+    if (m_converter) {
         auto f = makeAVFrame();
 
-        f->format = d->targetSWFormat;
-        f->width = d->settings.videoResolution().width();
-        f->height = d->settings.videoResolution().height();
+        f->format = m_targetSWFormat;
+        f->width = m_settings.videoResolution().width();
+        f->height = m_settings.videoResolution().height();
+
         av_frame_get_buffer(f.get(), 0);
-        sws_scale(d->converter, frame->data, frame->linesize, 0, f->height, f->data, f->linesize);
+        const auto scaledHeight = sws_scale(m_converter.get(), frame->data, frame->linesize, 0,
+                                            frame->height, f->data, f->linesize);
+
+        if (scaledHeight != f->height)
+            qCWarning(qLcVideoFrameEncoder) << "Scaled height" << scaledHeight << "!=" << f->height;
+
         frame = std::move(f);
     }
 
-    if (d->uploadToHW) {
-        auto *hwFramesContext = d->accel->hwFramesContextAsBuffer();
+    if (m_uploadToHW) {
+        auto *hwFramesContext = m_accel->hwFramesContextAsBuffer();
         Q_ASSERT(hwFramesContext);
         auto f = makeAVFrame();
 
@@ -351,27 +299,106 @@ int VideoFrameEncoder::sendFrame(AVFrameUPtr frame)
         frame = std::move(f);
     }
 
-    qCDebug(qLcVideoFrameEncoder) << "sending frame" << pts;
-    frame->pts = pts;
-    return avcodec_send_frame(d->codecContext, frame.get());
+    qCDebug(qLcVideoFrameEncoder) << "sending frame" << pts << "*" << timeBase;
+
+    setAVFrameTime(*frame, pts, timeBase);
+    return avcodec_send_frame(m_codecContext.get(), frame.get());
 }
 
-AVPacket *VideoFrameEncoder::retrievePacket()
+AVPacketUPtr VideoFrameEncoder::retrievePacket()
 {
-    if (!d || !d->codecContext)
+    if (!m_codecContext)
         return nullptr;
-    AVPacket *packet = av_packet_alloc();
-    int ret = avcodec_receive_packet(d->codecContext, packet);
-    if (ret < 0) {
-        av_packet_free(&packet);
-        if (ret != AVERROR(EOF) && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
-            qCDebug(qLcVideoFrameEncoder) << "Error receiving packet" << ret << err2str(ret);
-        return nullptr;
+
+    auto getPacket = [&]() {
+        AVPacketUPtr packet(av_packet_alloc());
+        const int ret = avcodec_receive_packet(m_codecContext.get(), packet.get());
+        if (ret < 0) {
+            if (ret != AVERROR(EOF) && ret != AVERROR(EAGAIN) && ret != AVERROR_EOF)
+                qCDebug(qLcVideoFrameEncoder) << "Error receiving packet" << ret << err2str(ret);
+            return AVPacketUPtr{};
+        }
+        auto ts = timeStampMs(packet->pts, m_stream->time_base);
+
+        qCDebug(qLcVideoFrameEncoder)
+                << "got a packet" << packet->pts << packet->dts << (ts ? *ts : 0);
+
+        packet->stream_index = m_stream->id;
+        return packet;
+    };
+
+    auto fixPacketDts = [&](AVPacket &packet) {
+        // Workaround for some ffmpeg codecs bugs (e.g. nvenc)
+        // Ideally, packet->pts < packet->dts is not expected
+
+        if (packet.dts == AV_NOPTS_VALUE)
+            return true;
+
+        packet.dts -= m_packetDtsOffset;
+
+        if (packet.pts != AV_NOPTS_VALUE && packet.pts < packet.dts) {
+            m_packetDtsOffset += packet.dts - packet.pts;
+            packet.dts = packet.pts;
+
+            if (m_prevPacketDts != AV_NOPTS_VALUE && packet.dts < m_prevPacketDts) {
+                qCWarning(qLcVideoFrameEncoder)
+                        << "Skip packet; failed to fix dts:" << packet.dts << m_prevPacketDts;
+                return false;
+            }
+        }
+
+        m_prevPacketDts = packet.dts;
+
+        return true;
+    };
+
+    while (auto packet = getPacket()) {
+        if (fixPacketDts(*packet))
+            return packet;
     }
-    auto ts = timeStampMs(packet->pts, d->stream->time_base);
-    qCDebug(qLcVideoFrameEncoder) << "got a packet" << packet->pts << (ts ? *ts : 0);
-    packet->stream_index = d->stream->id;
-    return packet;
+
+    return nullptr;
+}
+
+void VideoFrameEncoder::updateConversions()
+{
+    const bool needToScale = m_sourceSize != m_settings.videoResolution();
+    const bool zeroCopy = m_sourceFormat == m_targetFormat && !needToScale;
+
+    m_converter.reset();
+
+    if (zeroCopy) {
+        m_downloadFromHW = false;
+        m_uploadToHW = false;
+
+        qCDebug(qLcVideoFrameEncoder) << "zero copy encoding, format" << m_targetFormat;
+        // no need to initialize any converters
+        return;
+    }
+
+    m_downloadFromHW = m_sourceFormat != m_sourceSWFormat;
+    m_uploadToHW = m_targetFormat != m_targetSWFormat;
+
+    if (m_sourceSWFormat != m_targetSWFormat || needToScale) {
+        const auto targetSize = m_settings.videoResolution();
+        qCDebug(qLcVideoFrameEncoder)
+                << "video source and encoder use different formats:" << m_sourceSWFormat
+                << m_targetSWFormat << "or sizes:" << m_sourceSize << targetSize;
+
+        m_converter.reset(sws_getContext(m_sourceSize.width(), m_sourceSize.height(),
+                                         m_sourceSWFormat, targetSize.width(), targetSize.height(),
+                                         m_targetSWFormat, SWS_FAST_BILINEAR, nullptr, nullptr,
+                                         nullptr));
+    }
+
+    qCDebug(qLcVideoFrameEncoder) << "VideoFrameEncoder conversions initialized:"
+                                  << "sourceFormat:" << m_sourceFormat
+                                  << (isHwPixelFormat(m_sourceFormat) ? "(hw)" : "(sw)")
+                                  << "targetFormat:" << m_targetFormat
+                                  << (isHwPixelFormat(m_targetFormat) ? "(hw)" : "(sw)")
+                                  << "sourceSWFormat:" << m_sourceSWFormat
+                                  << "targetSWFormat:" << m_targetSWFormat
+                                  << "converter:" << m_converter.get();
 }
 
 } // namespace QFFmpeg

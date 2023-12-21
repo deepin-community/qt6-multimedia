@@ -24,8 +24,11 @@ QAndroidCamera::~QAndroidCamera()
 
 void QAndroidCamera::setActive(bool active)
 {
-    if (m_cameraSession)
+    if (m_cameraSession) {
         m_cameraSession->setActive(active);
+    } else {
+        isPendingSetActive = active;
+    }
 }
 
 bool QAndroidCamera::isActive() const
@@ -99,6 +102,11 @@ void QAndroidCamera::setCaptureSession(QPlatformMediaCaptureSession *session)
     connect(m_cameraSession, &QAndroidCameraSession::activeChanged, this, &QAndroidCamera::activeChanged);
     connect(m_cameraSession, &QAndroidCameraSession::error, this, &QAndroidCamera::error);
     connect(m_cameraSession, &QAndroidCameraSession::opened, this, &QAndroidCamera::onCameraOpened);
+
+    if (isPendingSetActive) {
+        setActive(true);
+        isPendingSetActive = false;
+    }
 }
 
 void QAndroidCamera::setFocusMode(QCamera::FocusMode mode)
@@ -189,13 +197,11 @@ void QAndroidCamera::onCameraOpened()
     if (m_cameraSession->camera()->isZoomSupported()) {
         m_zoomRatios = m_cameraSession->camera()->getZoomRatios();
         qreal maxZoom = m_zoomRatios.last() / qreal(100);
-        if (m_maximumZoom != maxZoom) {
-            m_maximumZoom = maxZoom;
-        }
+        maximumZoomFactorChanged(maxZoom);
         zoomTo(1, -1);
     } else {
         m_zoomRatios.clear();
-        m_maximumZoom = 1.0;
+        maximumZoomFactorChanged(1.0);
     }
 
     m_minExposureCompensationIndex = m_cameraSession->camera()->getMinExposureCompensation();
@@ -552,3 +558,5 @@ void QAndroidCamera::setWhiteBalanceMode(QCamera::WhiteBalanceMode mode)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qandroidcamera_p.cpp"

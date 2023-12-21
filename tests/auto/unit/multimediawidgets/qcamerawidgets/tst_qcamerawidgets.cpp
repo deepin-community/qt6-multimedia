@@ -17,7 +17,7 @@
 #include <qvideosink.h>
 
 #include "qmockmediacapturesession.h"
-#include "qmockintegration_p.h"
+#include "qmockintegration.h"
 
 QT_USE_NAMESPACE
 
@@ -35,7 +35,7 @@ private slots:
     void testSetVideoOutput();
 
 private:
-    QMockIntegration mockIntegration;
+    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 void tst_QCameraWidgets::initTestCase()

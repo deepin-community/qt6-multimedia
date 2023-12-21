@@ -13,8 +13,7 @@
 #include <QOpenGLContext>
 #include <QOpenGLFunctions>
 
-#include <QtGui/private/qrhi_p.h>
-#include <QtGui/private/qrhigles2_p.h>
+#include <rhi/qrhi.h>
 
 #include <cstring>
 
@@ -432,3 +431,5 @@ GLuint QQnxWindowGrabberImage::getTexture(screen_window_t window, const QSize &s
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qqnxwindowgrabber_p.cpp"

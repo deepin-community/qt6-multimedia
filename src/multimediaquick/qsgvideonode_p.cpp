@@ -5,11 +5,9 @@
 #include <QtQuick/qsgmaterial.h>
 #include "qsgvideotexture_p.h"
 #include <QtMultimedia/private/qvideotexturehelper_p.h>
-#include <private/qabstractvideobuffer_p.h>
 #include <private/qquicktextnode_p.h>
 #include <private/qquickvideooutput_p.h>
 #include <private/qabstractvideobuffer_p.h>
-#include <qmutex.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -41,9 +39,8 @@ class QSGVideoMaterial;
 class QSGVideoMaterialRhiShader : public QSGMaterialShader
 {
 public:
-    QSGVideoMaterialRhiShader(const QSGVideoMaterial *material, const QVideoFrameFormat &format)
-        : m_material(material),
-        m_format(format)
+    QSGVideoMaterialRhiShader(const QVideoFrameFormat &format)
+        : m_format(format)
     {
         setShaderFileName(VertexStage, m_format.vertexShaderFileName());
         setShaderFileName(FragmentStage, m_format.fragmentShaderFileName());
@@ -56,10 +53,7 @@ public:
                             QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
 
 protected:
-    const QSGVideoMaterial *m_material = nullptr;
     QVideoFrameFormat m_format;
-    float m_planeWidth[3] = {0, 0, 0};
-    QMatrix4x4 m_colorMatrix;
 };
 
 class QSGVideoMaterial : public QSGMaterial
@@ -73,17 +67,17 @@ public:
     }
 
     [[nodiscard]] QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override {
-        return new QSGVideoMaterialRhiShader(this, m_format);
+        return new QSGVideoMaterialRhiShader(m_format);
     }
 
     int compare(const QSGMaterial *other) const override {
         const QSGVideoMaterial *m = static_cast<const QSGVideoMaterial *>(other);
 
-        qint64 diff = m_textures[0]->comparisonKey() - m->m_textures[0]->comparisonKey();
+        qint64 diff = m_textures[0].comparisonKey() - m->m_textures[0].comparisonKey();
         if (!diff)
-            diff = m_textures[1]->comparisonKey() - m->m_textures[1]->comparisonKey();
+            diff = m_textures[1].comparisonKey() - m->m_textures[1].comparisonKey();
         if (!diff)
-            diff = m_textures[2]->comparisonKey() - m->m_textures[2]->comparisonKey();
+            diff = m_textures[2].comparisonKey() - m->m_textures[2].comparisonKey();
 
         return diff < 0 ? -1 : (diff > 0 ? 1 : 0);
     }
@@ -94,7 +88,6 @@ public:
     }
 
     void setCurrentFrame(const QVideoFrame &frame) {
-        QMutexLocker lock(&m_frameMutex);
         m_currentFrame = frame;
         m_texturesDirty = true;
     }
@@ -102,22 +95,19 @@ public:
     void updateTextures(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates);
 
     QVideoFrameFormat m_format;
-    float m_planeWidth[3];
-    float m_opacity;
+    float m_opacity = 1.0f;
 
-    QMutex m_frameMutex;
     bool m_texturesDirty = false;
     QVideoFrame m_currentFrame;
 
     enum { NVideoFrameSlots = 4 };
     QVideoFrame m_videoFrameSlots[NVideoFrameSlots];
-    QScopedPointer<QSGVideoTexture> m_textures[3];
+    std::array<QSGVideoTexture, 3> m_textures;
     std::unique_ptr<QVideoFrameTextures> m_videoFrameTextures;
 };
 
 void QSGVideoMaterial::updateTextures(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
 {
-    QMutexLocker locker(&m_frameMutex);
     if (!m_texturesDirty)
         return;
 
@@ -127,8 +117,12 @@ void QSGVideoMaterial::updateTextures(QRhi *rhi, QRhiResourceUpdateBatch *resour
 
     // update and upload all textures
     m_videoFrameTextures = QVideoTextureHelper::createTextures(m_currentFrame, rhi, resourceUpdates, std::move(m_videoFrameTextures));
+    if (!m_videoFrameTextures)
+        return;
+
     for (int plane = 0; plane < 3; ++plane)
-        m_textures[plane]->setRhiTexture(m_videoFrameTextures->texture(plane));
+        m_textures[plane].setRhiTexture(m_videoFrameTextures->texture(plane));
+    m_texturesDirty = false;
 }
 
 
@@ -167,24 +161,18 @@ void QSGVideoMaterialRhiShader::updateSampledImage(RenderState &state, int bindi
         return;
 
     auto m = static_cast<QSGVideoMaterial *>(newMaterial);
-    *texture = m->m_textures[binding - 1].data();
+    *texture = &m->m_textures[binding - 1];
 }
 
 QSGVideoMaterial::QSGVideoMaterial(const QVideoFrameFormat &format) :
-    m_format(format),
-    m_opacity(1.0)
+    m_format(format)
 {
-    m_textures[0].reset(new QSGVideoTexture);
-    m_textures[1].reset(new QSGVideoTexture);
-    m_textures[2].reset(new QSGVideoTexture);
-
     setFlag(Blending, false);
 }
 
 QSGVideoNode::QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &format)
     : m_parent(parent),
-    m_orientation(-1),
-    m_format(format)
+      m_format(format)
 {
     setFlag(QSGNode::OwnsMaterial);
     setFlag(QSGNode::OwnsGeometry);
@@ -259,12 +247,24 @@ void QSGVideoNode::setSubtitleGeometry()
 /* Update the vertices and texture coordinates.  Orientation must be in {0,90,180,270} */
 void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &textureRect, int orientation)
 {
-    if (rect == m_rect && textureRect == m_textureRect && orientation == m_orientation)
+    bool frameChanged = false;
+    if (m_material) {
+        if (m_material->m_currentFrame.rotationAngle() != m_frameOrientation
+            || m_material->m_currentFrame.mirrored() != m_frameMirrored) {
+            frameChanged = true;
+        }
+    }
+    if (rect == m_rect && textureRect == m_textureRect && orientation == m_orientation
+        && !frameChanged)
         return;
 
     m_rect = rect;
     m_textureRect = textureRect;
     m_orientation = orientation;
+    if (m_material) {
+        m_frameOrientation = m_material->m_currentFrame.rotationAngle();
+        m_frameMirrored = m_material->m_currentFrame.mirrored();
+    }
     int videoRotation = orientation;
     videoRotation += m_material ? m_material->m_currentFrame.rotationAngle() : 0;
     videoRotation %= 360;

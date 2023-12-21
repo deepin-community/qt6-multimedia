@@ -39,8 +39,7 @@ Files: src/spatialaudio/*
 Copyright: 2022 The Qt Company Ltd.
 License: LGPL-3
 
-Files: conanfile.py
-       config.tests/*
+Files: config.tests/*
        tests/*
        util/adt_generate_qt.m
 Copyright: 2016-2022 The Qt Company Ltd.

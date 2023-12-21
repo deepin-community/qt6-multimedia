@@ -15,13 +15,16 @@
 
 #include <QtWidgets/qapplication.h>
 
-#include <qmockintegration_p.h>
+#include <qmockintegration.h>
 #include <qmockvideosink.h>
 
 QT_USE_NAMESPACE
 class tst_QVideoWidget : public QObject
 {
     Q_OBJECT
+public slots:
+    void initTestCase();
+
 private slots:
     void nullObject();
 
@@ -56,6 +59,15 @@ public:
         resize(320, 240);
     }
 };
+
+void tst_QVideoWidget::initTestCase()
+{
+#ifdef Q_OS_MACOS
+    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+        QSKIP("SKIP on macOS CI since metal is not supported, otherwise it often crashes. To be "
+              "fixed.");
+#endif
+}
 
 void tst_QVideoWidget::nullObject()
 {
@@ -92,8 +104,8 @@ void tst_QVideoWidget::show()
 
 void tst_QVideoWidget::aspectRatio()
 {
-    QMediaPlayer player;
     QtTestVideoWidget widget;
+    QMediaPlayer player;
     player.setVideoOutput(&widget);
 
     // Test the aspect ratio defaults to keeping the aspect ratio.
@@ -147,11 +159,12 @@ void tst_QVideoWidget::sizeHint()
 //    QFETCH(QRect, viewport);
     QFETCH(QSize, expectedSize);
 
-    QMockIntegration mock;
-    QMediaPlayer player;
+    QMockIntegrationFactory mockCreator;
     QtTestVideoWidget widget;
+    QMediaPlayer player;
+
     player.setVideoOutput(&widget);
-    auto mockSink = mock.lastVideoSink();
+    auto mockSink = QMockIntegration::instance()->lastVideoSink();
 
     widget.show();
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
@@ -163,8 +176,8 @@ void tst_QVideoWidget::sizeHint()
 
 void tst_QVideoWidget::fullScreen()
 {
-    QMediaPlayer player;
     QtTestVideoWidget widget;
+    QMediaPlayer player;
     player.setVideoOutput(&widget);
     widget.showNormal();
     QVERIFY(QTest::qWaitForWindowExposed(&widget));
@@ -231,8 +244,8 @@ static const uchar rgb32ImageData[] =
 
 void tst_QVideoWidget::paint()
 {
-    QMediaPlayer player;
     QtTestVideoWidget widget;
+    QMediaPlayer player;
     player.setVideoOutput(&widget);
     widget.resize(640,480);
     widget.show();

@@ -91,12 +91,12 @@ QVideoSink::QVideoSink(QObject *parent)
  */
 QVideoSink::~QVideoSink()
 {
+    disconnect(this);
     d->unregisterSource();
     delete d;
 }
 
 /*!
-    \internal
     Returns the QRhi instance being used to create texture data in the video frames.
  */
 QRhi *QVideoSink::rhi() const

@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 # Generated from multimedia.pro.
 
 #####################################################################
@@ -25,7 +28,9 @@ qt_internal_add_module(Multimedia
         audio/qaudiohelpers.cpp audio/qaudiohelpers_p.h
         audio/qaudiosource.cpp audio/qaudiosource.h
         audio/qaudiosink.cpp audio/qaudiosink.h
-        audio/qaudiosystem_p.h
+        audio/qaudiosystem.cpp audio/qaudiosystem_p.h
+        audio/qaudiostatemachine.cpp audio/qaudiostatemachine_p.h
+        audio/qaudiostatemachineutils_p.h
         audio/qsamplecache_p.cpp audio/qsamplecache_p.h
         audio/qsoundeffect.cpp audio/qsoundeffect.h
         audio/qwavedecoder.cpp audio/qwavedecoder.h
@@ -36,6 +41,8 @@ qt_internal_add_module(Multimedia
         platform/qplatformaudioinput_p.h
         platform/qplatformaudiooutput_p.h
         platform/qplatformcamera.cpp platform/qplatformcamera_p.h
+        platform/qplatformvideosource.cpp platform/qplatformvideosource_p.h
+        platform/qplatformsurfacecapture.cpp platform/qplatformsurfacecapture_p.h
         platform/qplatformimagecapture.cpp platform/qplatformimagecapture_p.h
         platform/qplatformmediacapture.cpp platform/qplatformmediacapture_p.h
         platform/qplatformmediadevices.cpp platform/qplatformmediadevices_p.h
@@ -43,10 +50,11 @@ qt_internal_add_module(Multimedia
         platform/qplatformmediaformatinfo.cpp  platform/qplatformmediaformatinfo_p.h
         platform/qplatformmediaintegration.cpp platform/qplatformmediaintegration_p.h
         platform/qplatformmediaplayer.cpp platform/qplatformmediaplayer_p.h
-        platform/qplatformmediaplugin_p.h
+        platform/qplatformmediaplugin.cpp platform/qplatformmediaplugin_p.h
         platform/qplatformvideodevices.cpp platform/qplatformvideodevices_p.h
         platform/qplatformvideosink.cpp platform/qplatformvideosink_p.h
         playback/qmediaplayer.cpp playback/qmediaplayer.h playback/qmediaplayer_p.h
+        platform/qplatformcapturablewindows_p.h
         qmediadevices.cpp qmediadevices.h
         qmediaenumdebug.h
         qmediaformat.cpp  qmediaformat.h
@@ -55,8 +63,12 @@ qt_internal_add_module(Multimedia
         qmediatimerange.cpp qmediatimerange.h
         qmultimediautils.cpp qmultimediautils_p.h
         qtmultimediaglobal.h qtmultimediaglobal_p.h
+        qerrorinfo_p.h
         recording/qmediacapturesession.cpp recording/qmediacapturesession.h
         recording/qmediarecorder.cpp recording/qmediarecorder.h recording/qmediarecorder_p.h
+        recording/qscreencapture.cpp recording/qscreencapture.h
+        recording/qwindowcapture.cpp recording/qwindowcapture.h
+        recording/qcapturablewindow.cpp recording/qcapturablewindow.h recording/qcapturablewindow_p.h
         video/qabstractvideobuffer.cpp video/qabstractvideobuffer_p.h
         video/qmemoryvideobuffer.cpp video/qmemoryvideobuffer_p.h
         video/qvideoframe.cpp video/qvideoframe.h
@@ -170,6 +182,11 @@ qt_internal_extend_target(Multimedia CONDITION APPLE
         ${FWCoreFoundation}
 )
 
+qt_internal_extend_target(Multimedia CONDITION MACOS
+    SOURCES
+        darwin/qmacosaudiodatautils_p.h
+)
+
 qt_internal_extend_target(Multimedia CONDITION IOS OR TVOS
     SOURCES
         darwin/qcoreaudiosessionmanager.mm darwin/qcoreaudiosessionmanager_p.h
@@ -202,12 +219,30 @@ qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf
         windows/qwindowsresampler.cpp windows/qwindowsresampler_p.h
         windows/qwindowsmultimediautils.cpp windows/qwindowsmultimediautils_p.h
         windows/qwindowsmfdefs.cpp windows/qwindowsmfdefs_p.h
-        windows/qwindowsiupointer_p.h
+        windows/qcomptr_p.h
+        windows/qcomtaskresource_p.h
     INCLUDE_DIRECTORIES
         windows
     LIBRARIES
         winmm
         ksuser
+)
+
+# Only on Windows' MinGW/LLVM build, symbols from `strmif.h` and `ddraw.h` conflicts
+# with symbols defined in `ksmedia.h`.
+qt_internal_extend_target(Multimedia CONDITION QT_FEATURE_wmf AND MINGW
+    NO_UNITY_BUILD_SOURCES
+        windows/qwindowsaudiodevice.cpp windows/qwindowsaudiodevice_p.h
+        windows/qwindowsaudiosource.cpp windows/qwindowsaudiosource_p.h
+        windows/qwindowsaudiosink.cpp windows/qwindowsaudiosink_p.h
+        windows/qwindowsaudioutils.cpp windows/qwindowsaudioutils_p.h
+        windows/qwindowsmediadevices.cpp windows/qwindowsmediadevices_p.h
+        windows/qwindowsmediafoundation.cpp windows/qwindowsmediafoundation_p.h
+        windows/qwindowsresampler.cpp windows/qwindowsresampler_p.h
+        windows/qwindowsmultimediautils.cpp windows/qwindowsmultimediautils_p.h
+        windows/qwindowsmfdefs.cpp windows/qwindowsmfdefs_p.h
+        windows/qcomptr_p.h
+        windows/qcomtaskresource_p.h
 )
 
 qt_internal_extend_target(Multimedia CONDITION WASM
@@ -220,6 +255,9 @@ qt_internal_extend_target(Multimedia CONDITION WASM
         wasm
     PUBLIC_LIBRARIES
         openal
+    NO_UNITY_BUILD_SOURCES
+        wasm/qwasmaudiosink.cpp
+        # To avoid collision between symbols defined in wasm/qwasmaudiosource.cpp.
 )
 
 set(VIDEO_VERTEX_SHADERS
@@ -248,7 +286,7 @@ set(VIDEO_SHADERS
     "shaders/nv12_bt2020_hlg.frag"
 )
 
-qt_internal_add_shaders(Multimedia "shaders"
+qt_internal_add_shaders(Multimedia "qtmultimedia_shaders"
     SILENT
     BATCHABLE
     PRECOMPILE
@@ -262,7 +300,7 @@ qt_internal_add_shaders(Multimedia "shaders"
 
 string(REPLACE ".frag" "_linear.frag.qsb" LINEAR_VIDEO_SHADERS "${VIDEO_SHADERS}")
 
-qt_internal_add_shaders(Multimedia "shaders_linear"
+qt_internal_add_shaders(Multimedia "qtmultimedia_shaders_linear"
     SILENT
     BATCHABLE
     PRECOMPILE
@@ -277,7 +315,7 @@ qt_internal_add_shaders(Multimedia "shaders_linear"
         QMM_OUTPUTSURFACE_LINEAR
 )
 
-qt_internal_add_shaders(Multimedia "shaders_gl_macos"
+qt_internal_add_shaders(Multimedia "qtmultimedia_shaders_gl_macos"
     SILENT
     BATCHABLE
     PRECOMPILE
@@ -293,7 +331,7 @@ qt_internal_add_shaders(Multimedia "shaders_gl_macos"
         "shaders/rectsampler_bgra.frag"
 )
 
-qt_internal_add_shaders(Multimedia "shaders_gl_macos_linear"
+qt_internal_add_shaders(Multimedia "qtmultimedia_shaders_gl_macos_linear"
     SILENT
     BATCHABLE
     PRECOMPILE
@@ -309,3 +347,8 @@ qt_internal_add_shaders(Multimedia "shaders_gl_macos_linear"
     OUTPUTS
         "shaders/rectsampler_bgra_linear.frag.qsb"
 )
+
+if (DEFINED QT_DEFAULT_MEDIA_BACKEND)
+    target_compile_definitions(Multimedia
+        PRIVATE QT_DEFAULT_MEDIA_BACKEND="${QT_DEFAULT_MEDIA_BACKEND}")
+endif()

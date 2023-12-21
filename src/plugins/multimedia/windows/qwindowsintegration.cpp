@@ -38,22 +38,18 @@ QWindowsMediaIntegration::QWindowsMediaIntegration()
     CoInitialize(NULL);
     MFStartup(MF_VERSION);
 
-    m_videoDevices = new QWindowsVideoDevices(this);
+    m_videoDevices = std::make_unique<QWindowsVideoDevices>(this);
 }
 
 QWindowsMediaIntegration::~QWindowsMediaIntegration()
 {
-    delete m_formatInfo;
-
     MFShutdown();
     CoUninitialize();
 }
 
-QPlatformMediaFormatInfo *QWindowsMediaIntegration::formatInfo()
+QPlatformMediaFormatInfo *QWindowsMediaIntegration::createFormatInfo()
 {
-    if (!m_formatInfo)
-        m_formatInfo = new QWindowsFormatInfo();
-    return m_formatInfo;
+    return new QWindowsFormatInfo();
 }
 
 QMaybe<QPlatformMediaCaptureSession *> QWindowsMediaIntegration::createCaptureSession()

@@ -7,7 +7,7 @@
 
 #include "qaudiodecoder.h"
 #include "qmockaudiodecoder.h"
-#include "qmockintegration_p.h"
+#include "qmockintegration.h"
 
 class tst_QAudioDecoder : public QObject
 {
@@ -26,7 +26,7 @@ private Q_SLOTS:
     void nullControl();
 
 private:
-    QMockIntegration mockIntegration;
+    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 tst_QAudioDecoder::tst_QAudioDecoder()
@@ -294,7 +294,7 @@ void tst_QAudioDecoder::readAll()
 
 void tst_QAudioDecoder::nullControl()
 {
-    mockIntegration.setFlags(QMockIntegration::NoAudioDecoderInterface);
+    QMockIntegration::instance()->setFlags(QMockIntegration::NoAudioDecoderInterface);
     QAudioDecoder d;
 
     QVERIFY(d.error() == QAudioDecoder::NotSupportedError);

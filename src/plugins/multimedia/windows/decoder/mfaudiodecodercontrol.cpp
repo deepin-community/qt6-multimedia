@@ -4,16 +4,18 @@
 #include <system_error>
 #include <mferror.h>
 #include <qglobal.h>
-#include "Wmcodecdsp.h"
+#include "wmcodecdsp.h"
 #include "mfaudiodecodercontrol_p.h"
 #include <private/qwindowsaudioutils_p.h>
+
+QT_BEGIN_NAMESPACE
 
 MFAudioDecoderControl::MFAudioDecoderControl(QAudioDecoder *parent)
     : QPlatformAudioDecoder(parent)
     , m_sourceResolver(new SourceResolver)
 {
-    connect(m_sourceResolver, SIGNAL(mediaSourceReady()), this, SLOT(handleMediaSourceReady()));
-    connect(m_sourceResolver, SIGNAL(error(long)), this, SLOT(handleMediaSourceError(long)));
+    connect(m_sourceResolver, &SourceResolver::mediaSourceReady, this, &MFAudioDecoderControl::handleMediaSourceReady);
+    connect(m_sourceResolver, &SourceResolver::error, this, &MFAudioDecoderControl::handleMediaSourceError);
 }
 
 MFAudioDecoderControl::~MFAudioDecoderControl()
@@ -85,22 +87,22 @@ void MFAudioDecoderControl::startReadingSource(IMFMediaSource *source)
 {
     Q_ASSERT(source);
 
-    m_decoderSourceReader.reset(new MFDecoderSourceReader());
+    m_decoderSourceReader = makeComObject<MFDecoderSourceReader>();
     if (!m_decoderSourceReader) {
         error(QAudioDecoder::ResourceError, tr("Could not instantiate MFDecoderSourceReader"));
         return;
     }
 
     auto mediaType = m_decoderSourceReader->setSource(source, m_outputFormat.sampleFormat());
-    QAudioFormat mediaFormat = QWindowsAudioUtils::mediaTypeToFormat(mediaType.get());
+    QAudioFormat mediaFormat = QWindowsAudioUtils::mediaTypeToFormat(mediaType.Get());
     if (!mediaFormat.isValid()) {
         error(QAudioDecoder::FormatError, tr("Invalid media format"));
-        m_decoderSourceReader.reset();
+        m_decoderSourceReader.Reset();
         return;
     }
 
-    QWindowsIUPointer<IMFPresentationDescriptor> pd;
-    if (SUCCEEDED(source->CreatePresentationDescriptor(pd.address()))) {
+    ComPtr<IMFPresentationDescriptor> pd;
+    if (SUCCEEDED(source->CreatePresentationDescriptor(pd.GetAddressOf()))) {
         UINT64 duration = 0;
         pd->GetUINT64(MF_PD_DURATION, &duration);
         duration /= 10000;
@@ -113,8 +115,8 @@ void MFAudioDecoderControl::startReadingSource(IMFMediaSource *source)
         return;
     }
 
-    connect(m_decoderSourceReader.get(), SIGNAL(finished()), this, SLOT(handleSourceFinished()));
-    connect(m_decoderSourceReader.get(), SIGNAL(newSample(QWindowsIUPointer<IMFSample>)), this, SLOT(handleNewSample(QWindowsIUPointer<IMFSample>)));
+    connect(m_decoderSourceReader.Get(), &MFDecoderSourceReader::finished, this, &MFAudioDecoderControl::handleSourceFinished);
+    connect(m_decoderSourceReader.Get(), &MFDecoderSourceReader::newSample, this, &MFAudioDecoderControl::handleNewSample);
 
     setIsDecoding(true);
 
@@ -150,14 +152,14 @@ void MFAudioDecoderControl::stop()
     if (!isDecoding())
         return;
 
-    disconnect(m_decoderSourceReader.get());
+    disconnect(m_decoderSourceReader.Get());
     m_decoderSourceReader->clearSource();
-    m_decoderSourceReader.reset();
+    m_decoderSourceReader.Reset();
 
     if (bufferAvailable()) {
         QAudioBuffer buffer;
         m_audioBuffer.swap(buffer);
-        emit bufferAvailableChanged(false);
+        bufferAvailableChanged(false);
     }
     setIsDecoding(false);
 
@@ -171,12 +173,12 @@ void MFAudioDecoderControl::stop()
     }
 }
 
-void MFAudioDecoderControl::handleNewSample(QWindowsIUPointer<IMFSample> sample)
+void MFAudioDecoderControl::handleNewSample(ComPtr<IMFSample> sample)
 {
     Q_ASSERT(sample);
 
     qint64 sampleStartTimeUs = m_resampler.outputFormat().durationForBytes(m_resampler.totalOutputBytes());
-    QByteArray out = m_resampler.resample(sample.get());
+    QByteArray out = m_resampler.resample(sample.Get());
 
     if (out.isEmpty()) {
         error(QAudioDecoder::Error::ResourceError, tr("Failed processing a sample"));
@@ -184,15 +186,15 @@ void MFAudioDecoderControl::handleNewSample(QWindowsIUPointer<IMFSample> sample)
     } else {
         m_audioBuffer = QAudioBuffer(out, m_resampler.outputFormat(), sampleStartTimeUs);
 
-        emit bufferAvailableChanged(true);
-        emit bufferReady();
+        bufferAvailableChanged(true);
+        bufferReady();
     }
 }
 
 void MFAudioDecoderControl::handleSourceFinished()
 {
     stop();
-    emit finished();
+    finished();
 }
 
 void MFAudioDecoderControl::setAudioFormat(const QAudioFormat &format)
@@ -200,7 +202,7 @@ void MFAudioDecoderControl::setAudioFormat(const QAudioFormat &format)
     if (m_outputFormat == format)
         return;
     m_outputFormat = format;
-    emit formatChanged(m_outputFormat);
+    formatChanged(m_outputFormat);
 }
 
 QAudioBuffer MFAudioDecoderControl::read()
@@ -210,10 +212,14 @@ QAudioBuffer MFAudioDecoderControl::read()
     if (bufferAvailable()) {
         buffer.swap(m_audioBuffer);
         m_position = buffer.startTime() / 1000;
-        emit positionChanged(m_position);
-        emit bufferAvailableChanged(false);
+        positionChanged(m_position);
+        bufferAvailableChanged(false);
         m_decoderSourceReader->readNextSample();
     }
 
     return buffer;
 }
+
+QT_END_NAMESPACE
+
+#include "moc_mfaudiodecodercontrol_p.cpp"

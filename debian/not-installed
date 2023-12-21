@@ -40,10 +40,10 @@ usr/lib/${DEB_HOST_MULTIARCH}/cmake/Qt6Quick3DSpatialAudioPrivate/Qt6Quick3DSpat
 usr/lib/${DEB_HOST_MULTIARCH}/libQt6BundledResonanceAudio.a
 usr/lib/${DEB_HOST_MULTIARCH}/libQt6Quick3DSpatialAudio.prl
 usr/lib/${DEB_HOST_MULTIARCH}/libQt6Quick3DSpatialAudio.so
-usr/lib/${DEB_HOST_MULTIARCH}/metatypes/qt6quick3dspatialaudioprivate_none_metatypes.json
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/modules/qt_lib_multimedia_private.pri
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/modules/qt_lib_multimediaquick_private.pri
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/modules/qt_lib_multimediawidgets_private.pri
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/modules/qt_lib_quick3dspatialaudio_private.pri
 usr/lib/${DEB_HOST_MULTIARCH}/qt6/mkspecs/modules/qt_lib_spatialaudio_private.pri
-usr/share/qt6/modules/Quick3DSpatialAudioPrivate.json
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/modules/Quick3DSpatialAudioPrivate.json
+usr/lib/${DEB_HOST_MULTIARCH}/qt6/metatypes/qt6quick3dspatialaudioprivate_none_metatypes.json

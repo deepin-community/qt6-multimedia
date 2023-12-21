@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
 import QtQuick
-import QtMultimedia
 
 Item {
     id : zoomControl
     property real currentZoom : 1
     property real maximumZoom : 1
-    signal zoomTo(real value)
+    signal zoomTo(real target)
 
     visible: zoomControl.maximumZoom > 1
 

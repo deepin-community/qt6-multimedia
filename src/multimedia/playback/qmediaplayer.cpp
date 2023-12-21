@@ -97,13 +97,15 @@ QT_BEGIN_NAMESPACE
     \sa AudioOutput, VideoOutput
 */
 
-void QMediaPlayerPrivate::setState(QMediaPlayer::PlaybackState ps)
+void QMediaPlayerPrivate::setState(QMediaPlayer::PlaybackState toState)
 {
     Q_Q(QMediaPlayer);
 
-    if (ps != state) {
-        state = ps;
-        emit q->playbackStateChanged(ps);
+    if (toState != state) {
+        const auto fromState = std::exchange(state, toState);
+        if (toState == QMediaPlayer::PlayingState || fromState == QMediaPlayer::PlayingState)
+            emit q->playingChanged(toState == QMediaPlayer::PlayingState);
+        emit q->playbackStateChanged(toState);
     }
 }
 
@@ -114,14 +116,11 @@ void QMediaPlayerPrivate::setStatus(QMediaPlayer::MediaStatus s)
     emit q->mediaStatusChanged(s);
 }
 
-void QMediaPlayerPrivate::setError(int error, const QString &errorString)
+void QMediaPlayerPrivate::setError(QMediaPlayer::Error error, const QString &errorString)
 {
     Q_Q(QMediaPlayer);
 
-    this->error = QMediaPlayer::Error(error);
-    this->errorString = errorString;
-    emit q->errorChanged();
-    emit q->errorOccurred(this->error, errorString);
+    this->error.setAndNotify(error, errorString, *q);
 }
 
 void QMediaPlayerPrivate::setMedia(const QUrl &media, QIODevice *stream)
@@ -187,25 +186,16 @@ void QMediaPlayerPrivate::setMedia(const QUrl &media, QIODevice *stream)
             qWarning("Qt was built with -no-feature-temporaryfile: playback from resource file is not supported!");
 #endif
         }
-#if defined(Q_OS_ANDROID)
-    } else if (media.scheme() == QLatin1String("content") && !stream) {
-        // content scheme should happen only on android
-        const int fd = QJniObject::callStaticMethod<jint>(
-                "org/qtproject/qt/android/QtNative", "openFdForContentUrl",
-                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)I",
-                QNativeInterface::QAndroidApplication::context(),
-                QJniObject::fromString(media.toString()).object(),
-                QJniObject::fromString(QLatin1String("r")).object());
-
-        file.reset(new QFile(QLatin1Char(':') + media.path()));
-        file->open(fd, QFile::ReadOnly, QFile::FileHandleFlag::AutoCloseHandle);
-        control->setMedia(media, file.get());
-#endif
     } else {
         qrcMedia = QUrl();
         QUrl url = media;
         if (url.scheme().isEmpty() || url.scheme() == QLatin1String("file"))
-            url = QUrl::fromUserInput(media.path(), QDir::currentPath(), QUrl::AssumeLocalFile);
+            url = QUrl::fromUserInput(media.toString(), QDir::currentPath(), QUrl::AssumeLocalFile);
+        if (url.scheme() == QLatin1String("content") && !stream) {
+            file.reset(new QFile(media.url()));
+            stream = file.get();
+        }
+
         control->setMedia(url, stream);
     }
 
@@ -287,6 +277,8 @@ const QIODevice *QMediaPlayer::sourceDevice() const
     \property QMediaPlayer::playbackState
 
     Returns the \l{QMediaPlayer::}{PlaybackState}.
+
+    \sa playing
 */
 QMediaPlayer::PlaybackState QMediaPlayer::playbackState() const
 {
@@ -409,6 +401,12 @@ bool QMediaPlayer::isSeekable() const
     return d->control && d->control->isSeekable();
 }
 
+bool QMediaPlayer::isPlaying() const
+{
+    Q_D(const QMediaPlayer);
+    return d->state == QMediaPlayer::PlayingState;
+}
+
 /*!
     Returns the current playback rate.
 */
@@ -464,7 +462,7 @@ void QMediaPlayer::setLoops(int loops)
 */
 QMediaPlayer::Error QMediaPlayer::error() const
 {
-    return d_func()->error;
+    return d_func()->error.code();
 }
 
 /*!
@@ -481,7 +479,7 @@ QMediaPlayer::Error QMediaPlayer::error() const
 */
 QString QMediaPlayer::errorString() const
 {
-    return d_func()->errorString;
+    return d_func()->error.description();
 }
 
 /*!
@@ -489,7 +487,8 @@ QString QMediaPlayer::errorString() const
 
     Starts or resumes playback of the media.
 
-    Sets the \l playbackState property to PlayingState.
+    Sets the \l playbackState property to PlayingState, and changes
+    \l playing to \c true.
 */
 
 /*!
@@ -505,8 +504,7 @@ void QMediaPlayer::play()
         return;
 
     // Reset error conditions
-    d->error = NoError;
-    d->errorString = QString();
+    d->setError(NoError, QString());
 
     d->control->play();
 }
@@ -516,7 +514,8 @@ void QMediaPlayer::play()
 
     Pauses playback of the media.
 
-    Sets the \l playbackState property to PausedState.
+    Sets the \l playbackState property to PausedState,
+    and changes \l playing to \c false.
 */
 
 /*!
@@ -537,7 +536,8 @@ void QMediaPlayer::pause()
 
     Stops playback of the media.
 
-    Sets the \l playbackState property to StoppedState.
+    Sets the \l playbackState property to StoppedState,
+    and changes \l playing to \c false.
 */
 
 /*!
@@ -724,6 +724,8 @@ QList<QMediaMetaData> QMediaPlayer::audioTracks() const
 */
 
 /*!
+    \property QMediaPlayer::videoTracks
+
     Lists the set of available video tracks inside the media.
 
     The QMediaMetaData returned describes the properties of individual
@@ -988,7 +990,7 @@ QMediaMetaData QMediaPlayer::metaData() const
 
     \value StoppedState The media player is not playing content, playback will begin from the start
     of the current track.
-    \value PlayingState The media player is currently playing content.
+    \value PlayingState The media player is currently playing content. This indicates the same as the \l playing property.
     \value PausedState The media player has paused playback, playback of the current track will
     resume from the position the player was paused at.
 */
@@ -1002,7 +1004,7 @@ QMediaMetaData QMediaPlayer::metaData() const
     \header \li Property value
             \li Description
     \row \li PlayingState
-        \li The media is currently playing.
+        \li The media is currently playing. This indicates the same as the \l playing property.
     \row \li PausedState
         \li Playback of the media has been suspended.
     \row \li StoppedState
@@ -1014,6 +1016,12 @@ QMediaMetaData QMediaPlayer::metaData() const
     \qmlsignal QtMultimedia::MediaPlayer::playbackStateChanged()
 
     This signal is emitted when the \l playbackState property is altered.
+*/
+
+/*!
+    \qmlsignal QtMultimedia::MediaPlayer::playingChanged()
+
+    This signal is emitted when the \l playing property changes.
 */
 
 /*!
@@ -1262,10 +1270,29 @@ QMediaMetaData QMediaPlayer::metaData() const
 */
 
 /*!
+    \qmlproperty bool QtMultimedia::MediaPlayer::playing
+    \since 6.5
+
+    Indicates whether the media is currently playing.
+
+    \sa playbackState
+*/
+
+/*!
+    \property QMediaPlayer::playing
+    \brief Whether the media is playing.
+    \since 6.5
+
+    \sa playbackState, PlayingState
+*/
+
+/*!
     \qmlproperty real QtMultimedia::MediaPlayer::playbackRate
 
-    This property holds the rate at which audio is played at as a multiple of
+    This property holds the rate at which media is played at as a multiple of
     the normal rate.
+
+    For more information, see \l{QMediaPlayer::playbackRate}.
 
     Defaults to \c{1.0}.
 */
@@ -1274,11 +1301,11 @@ QMediaMetaData QMediaPlayer::metaData() const
     \property QMediaPlayer::playbackRate
     \brief the playback rate of the current media.
 
-    This value is a multiplier applied to the media's standard play rate. By
-    default this value is 1.0, indicating that the media is playing at the
-    standard pace. Values higher than 1.0 will increase the rate of play.
-    Values less than zero can be set and indicate the media should rewind at the
-    multiplier of the standard pace.
+    This value is a multiplier applied to the media's standard playback
+    rate. By default this value is 1.0, indicating that the media is
+    playing at the standard speed. Values higher than 1.0 will increase
+    the playback speed, while values between 0.0 and 1.0 results in
+    slower playback. Negative playback rates are not supported.
 
     Not all playback services support change of the playback rate. It is
     framework defined as to the status and quality of audio and video

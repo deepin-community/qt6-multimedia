@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GFDL-1.3-no-invariants-only
 
 /*!
-
 \page videooverview.html
 \title Video Overview
 \brief Video playback
+\ingroup explanations-graphicsandmultimedia
 
 \section1 Video Features
 

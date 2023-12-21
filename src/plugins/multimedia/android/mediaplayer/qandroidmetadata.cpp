@@ -13,8 +13,6 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(lcaMetadata, "qt.multimedia.android.metadata")
-
 // Genre name ordered by ID
 // see: http://id3.org/id3v2.3.0#Appendix_A_-_Genre_List_from_ID3v1
 static const char* qt_ID3GenreNames[] =
@@ -134,15 +132,7 @@ QLocale::Language getLocaleLanguage(const QString &language)
     if (language == QLatin1String("und") || language == QStringLiteral("mis"))
         return QLocale::AnyLanguage;
 
-    QLocale locale(language);
-
-    if (locale == QLocale::c()) {
-        qCWarning(lcaMetadata) << "Could not parse language:" << language
-                               << ". It is not a valid Unicode CLDR language code.";
-        return QLocale::AnyLanguage;
-    }
-
-    return locale.language();
+    return QLocale::codeToLanguage(language, QLocale::ISO639Part2);
 }
 
 QAndroidMetaData::QAndroidMetaData(int trackType, int androidTrackType, int androidTrackNumber,

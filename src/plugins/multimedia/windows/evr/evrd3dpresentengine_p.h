@@ -18,7 +18,8 @@
 #include <QMutex>
 #include <QSize>
 #include <QVideoFrameFormat>
-#include <private/qwindowsiupointer_p.h>
+#include <private/qcomptr_p.h>
+#include <qpointer.h>
 
 #include <d3d9.h>
 
@@ -106,7 +107,8 @@ public:
     HRESULT checkFormat(D3DFORMAT format);
     UINT refreshRate() const { return m_displayMode.RefreshRate; }
 
-    HRESULT createVideoSamples(IMFMediaType *format, QList<IMFSample*>& videoSampleQueue, QSize frameSize);
+    HRESULT createVideoSamples(IMFMediaType *format, QList<ComPtr<IMFSample>> &videoSampleQueue,
+                               QSize frameSize);
     QVideoFrameFormat videoSurfaceFormat() const { return m_surfaceFormat; }
     QVideoFrame makeVideoFrame(IMFSample* sample);
 
@@ -124,13 +126,13 @@ private:
     UINT m_deviceResetToken;
     D3DDISPLAYMODE m_displayMode;
 
-    QWindowsIUPointer<IDirect3D9Ex> m_D3D9;
-    QWindowsIUPointer<IDirect3DDevice9Ex> m_device;
-    QWindowsIUPointer<IDirect3DDeviceManager9> m_devices;
+    ComPtr<IDirect3D9Ex> m_D3D9;
+    ComPtr<IDirect3DDevice9Ex> m_device;
+    ComPtr<IDirect3DDeviceManager9> m_devices;
 
     QVideoFrameFormat m_surfaceFormat;
 
-    class QVideoSink *m_sink = nullptr;
+    QPointer<QVideoSink> m_sink;
     bool m_useTextureRendering = false;
 #if QT_CONFIG(opengl)
     WglNvDxInterop m_wglNvDxInterop;

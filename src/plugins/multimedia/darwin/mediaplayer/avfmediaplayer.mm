@@ -107,6 +107,9 @@ static void *AVFMediaPlayerObserverCurrentItemDurationObservationContext = &AVFM
 
         // use __block to avoid maintaining strong references on variables captured by the
         // following block callback
+#if defined(Q_OS_IOS)
+        BOOL isAccessing = [m_URL startAccessingSecurityScopedResource];
+#endif
         __block AVURLAsset *asset = [[AVURLAsset URLAssetWithURL:m_URL options:nil] retain];
         [asset.resourceLoader setDelegate:self queue:dispatch_get_main_queue()];
 
@@ -119,6 +122,10 @@ static void *AVFMediaPlayerObserverCurrentItemDurationObservationContext = &AVFM
          ^{
              dispatch_async( dispatch_get_main_queue(),
                            ^{
+#if defined(Q_OS_IOS)
+                                 if (isAccessing)
+                                    [m_URL stopAccessingSecurityScopedResource];
+#endif
                                  [blockSelf prepareToPlayAsset:asset withKeys:requestedKeys];
                                  [asset release];
                                  [requestedKeys release];
@@ -182,20 +189,7 @@ static void *AVFMediaPlayerObserverCurrentItemDurationObservationContext = &AVFM
     qDebug() << Q_FUNC_INFO << "isPlayable: " << [asset isPlayable];
 #endif
     if (!asset.playable)
-    {
-        //Generate an error describing the failure.
-        NSString *localizedDescription = NSLocalizedString(@"Item cannot be played", @"Item cannot be played description");
-        NSString *localizedFailureReason = NSLocalizedString(@"The assets tracks were loaded, but could not be made playable.", @"Item cannot be played failure reason");
-        NSDictionary *errorDict = [NSDictionary dictionaryWithObjectsAndKeys:
-                localizedDescription, NSLocalizedDescriptionKey,
-                localizedFailureReason, NSLocalizedFailureReasonErrorKey,
-                nil];
-        NSError *assetCannotBePlayedError = [NSError errorWithDomain:@"StitchedStreamPlayer" code:0 userInfo:errorDict];
-
-        [self assetFailedToPrepareForPlayback:assetCannotBePlayedError];
-
-        return;
-    }
+        qWarning() << "Asset reported to be not playable. Playback of this asset may not be possible.";
 
     //At this point we're ready to set up for playback of the asset.
     //Stop observing our prior AVPlayerItem, if we have one.
@@ -207,6 +201,20 @@ static void *AVFMediaPlayerObserverCurrentItemDurationObservationContext = &AVFM
 
     //Create a new instance of AVPlayerItem from the now successfully loaded AVAsset.
     m_playerItem = [AVPlayerItem playerItemWithAsset:asset];
+    if (!m_playerItem) {
+        qWarning() << "Failed to create player item";
+        //Generate an error describing the failure.
+        NSString *localizedDescription = NSLocalizedString(@"Item cannot be played", @"Item cannot be played description");
+        NSString *localizedFailureReason = NSLocalizedString(@"The assets tracks were loaded, but couldn't create player item.", @"Item cannot be played failure reason");
+        NSDictionary *errorDict = [NSDictionary dictionaryWithObjectsAndKeys:
+                localizedDescription, NSLocalizedDescriptionKey,
+                localizedFailureReason, NSLocalizedFailureReasonErrorKey,
+                nil];
+        NSError *assetCannotBePlayedError = [NSError errorWithDomain:@"StitchedStreamPlayer" code:0 userInfo:errorDict];
+
+        [self assetFailedToPrepareForPlayback:assetCannotBePlayedError];
+        return;
+    }
 
     //Observe the player item "status" key to determine when it is ready to play.
     [m_playerItem addObserver:self
@@ -441,19 +449,18 @@ static void *AVFMediaPlayerObserverCurrentItemDurationObservationContext = &AVFM
 @end
 
 AVFMediaPlayer::AVFMediaPlayer(QMediaPlayer *player)
-    : QObject(player)
-    , QPlatformMediaPlayer(player)
-    , m_state(QMediaPlayer::StoppedState)
-    , m_mediaStatus(QMediaPlayer::NoMedia)
-    , m_mediaStream(nullptr)
-    , m_tryingAsync(false)
-    , m_rate(1.0)
-    , m_requestedPosition(-1)
-    , m_duration(0)
-    , m_bufferProgress(0)
-    , m_videoAvailable(false)
-    , m_audioAvailable(false)
-    , m_seekable(false)
+    : QObject(player),
+      QPlatformMediaPlayer(player),
+      m_state(QMediaPlayer::StoppedState),
+      m_mediaStatus(QMediaPlayer::NoMedia),
+      m_mediaStream(nullptr),
+      m_rate(1.0),
+      m_requestedPosition(-1),
+      m_duration(0),
+      m_bufferProgress(0),
+      m_videoAvailable(false),
+      m_audioAvailable(false),
+      m_seekable(false)
 {
     m_observer = [[AVFMediaPlayerObserver alloc] initWithMediaPlayerSession:this];
     connect(&m_playbackTimer, &QTimer::timeout, this, &AVFMediaPlayer::processPositionChange);
@@ -1223,3 +1230,5 @@ void AVFMediaPlayer::videoOrientationForAssetTrack(AVAssetTrack *videoTrack,
         }
     }
 }
+
+#include "moc_avfmediaplayer_p.cpp"

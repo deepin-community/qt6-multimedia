@@ -58,15 +58,18 @@ public:
 
     void deviceOrientationChanged(int angle = -1);
 
-    std::optional<int> ffmpegHWPixelFormat() const override { return hwPixelFormat; }
+    std::optional<int> ffmpegHWPixelFormat() const override;
+
+    int cameraPixelFormatScore(QVideoFrameFormat::PixelFormat pixelFmt,
+                               QVideoFrameFormat::ColorRange colorRange) const override;
 
 private:
-    void requestCameraPermissionIfNeeded();
-    void cameraAuthorizationChanged(bool authorized);
+    bool checkCameraPermission();
     void updateCameraFormat();
     void updateVideoInput();
     void attachVideoInputDevice();
-    std::uint32_t setPixelFormat(const QVideoFrameFormat::PixelFormat pixelFormat);
+    uint32_t setPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat, uint32_t inputCvPixFormat);
+    QSize adjustedResolution() const;
 
     AVCaptureDevice *device() const;
 
@@ -77,7 +80,7 @@ private:
     QAVFSampleBufferDelegate *m_sampleBufferDelegate = nullptr;
     dispatch_queue_t m_delegateQueue;
     QVideoOutputOrientationHandler m_orientationHandler;
-    AVPixelFormat hwPixelFormat = AV_PIX_FMT_NONE;
+    AVPixelFormat m_hwPixelFormat = AV_PIX_FMT_NONE;
 };
 
 QT_END_NAMESPACE

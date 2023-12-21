@@ -8,29 +8,31 @@
 #include "qwindowsaudiosource_p.h"
 #include "qwindowsaudiosink_p.h"
 #include "qwindowsaudiodevice_p.h"
+#include "qcomtaskresource_p.h"
 
 #include <mmsystem.h>
 #include <mmddk.h>
 #include <mfobjects.h>
 #include <mfidl.h>
-#include <Mferror.h>
+#include <mferror.h>
 #include <mmdeviceapi.h>
 #include <qwindowsmfdefs_p.h>
 
 #include <QtCore/qmap.h>
+#include <private/qsystemerror_p.h>
 
 QT_BEGIN_NAMESPACE
 
 class CMMNotificationClient : public IMMNotificationClient
 {
     LONG m_cRef;
-    QWindowsIUPointer<IMMDeviceEnumerator> m_enumerator;
+    ComPtr<IMMDeviceEnumerator> m_enumerator;
     QWindowsMediaDevices *m_windowsMediaDevices;
     QMap<QString, DWORD> m_deviceState;
 
 public:
     CMMNotificationClient(QWindowsMediaDevices *windowsMediaDevices,
-                          QWindowsIUPointer<IMMDeviceEnumerator> enumerator,
+                          ComPtr<IMMDeviceEnumerator> enumerator,
                           QMap<QString, DWORD> &&deviceState) :
         m_cRef(1),
         m_enumerator(enumerator),
@@ -124,20 +126,20 @@ public:
     {
         // windowsMediaDevice may be deleted as we are executing the callback
         if (flow == EDataFlow::eCapture) {
-            m_windowsMediaDevices->audioInputsChanged();
+            emit m_windowsMediaDevices->audioInputsChanged();
         } else if (flow == EDataFlow::eRender) {
-            m_windowsMediaDevices->audioOutputsChanged();
+            emit m_windowsMediaDevices->audioOutputsChanged();
         }
     }
 
     void emitAudioDevicesChanged(LPCWSTR deviceID)
     {
-        QWindowsIUPointer<IMMDevice> device;
-        QWindowsIUPointer<IMMEndpoint> endpoint;
+        ComPtr<IMMDevice> device;
+        ComPtr<IMMEndpoint> endpoint;
         EDataFlow flow;
 
-        if (SUCCEEDED(m_enumerator->GetDevice(deviceID, device.address()))
-            && SUCCEEDED(device->QueryInterface(__uuidof(IMMEndpoint), (void**)endpoint.address()))
+        if (SUCCEEDED(m_enumerator->GetDevice(deviceID, device.GetAddressOf()))
+            && SUCCEEDED(device->QueryInterface(__uuidof(IMMEndpoint), (void**)endpoint.GetAddressOf()))
             && SUCCEEDED(endpoint->GetDataFlow(&flow)))
         {
                     emitAudioDevicesChanged(flow);
@@ -154,64 +156,73 @@ QWindowsMediaDevices::QWindowsMediaDevices()
                 CLSCTX_INPROC_SERVER,__uuidof(IMMDeviceEnumerator),
                 (void**)&m_deviceEnumerator);
 
-    if (SUCCEEDED(hr)) {
-        QMap<QString, DWORD> devState;
-        QWindowsIUPointer<IMMDeviceCollection> devColl;
-        UINT count = 0;
+    if (FAILED(hr)) {
+        qWarning("Failed to instantiate IMMDeviceEnumerator (%s)."
+                 "Audio device change notification will be disabled",
+            qPrintable(QSystemError::windowsComString(hr)));
+        return;
+    }
 
-        if (SUCCEEDED(m_deviceEnumerator->EnumAudioEndpoints(EDataFlow::eAll, DEVICE_STATEMASK_ALL, devColl.address()))
-            && SUCCEEDED(devColl->GetCount(&count)))
-        {
-            for (UINT i = 0; i < count; i++) {
-                QWindowsIUPointer<IMMDevice> device;
-                DWORD state = 0;
-                LPWSTR id = nullptr;
+    QMap<QString, DWORD> devState;
+    ComPtr<IMMDeviceCollection> devColl;
+    UINT count = 0;
 
-                if (SUCCEEDED(devColl->Item(i, device.address()))
-                    && SUCCEEDED(device->GetState(&state))
-                    && SUCCEEDED(device->GetId(&id)))
-                {
-                    devState.insert(QString::fromWCharArray(id), state);
-                    CoTaskMemFree(id);
-                }
+    if (SUCCEEDED(m_deviceEnumerator->EnumAudioEndpoints(EDataFlow::eAll, DEVICE_STATEMASK_ALL, devColl.GetAddressOf()))
+        && SUCCEEDED(devColl->GetCount(&count)))
+    {
+        for (UINT i = 0; i < count; i++) {
+            ComPtr<IMMDevice> device;
+            DWORD state = 0;
+            QComTaskResource<WCHAR> id;
+
+            if (SUCCEEDED(devColl->Item(i, device.GetAddressOf()))
+                && SUCCEEDED(device->GetState(&state))
+                && SUCCEEDED(device->GetId(id.address()))) {
+                devState.insert(QString::fromWCharArray(id.get()), state);
             }
         }
-
-
-        m_notificationClient.reset(new CMMNotificationClient(this, m_deviceEnumerator, std::move(devState)));
-        m_deviceEnumerator->RegisterEndpointNotificationCallback(m_notificationClient.get());
-
-    } else {
-        qWarning() << "Audio device change notification disabled";
     }
+
+
+    m_notificationClient = makeComObject<CMMNotificationClient>(this, m_deviceEnumerator, std::move(devState));
+    m_deviceEnumerator->RegisterEndpointNotificationCallback(m_notificationClient.Get());
 }
 
 QWindowsMediaDevices::~QWindowsMediaDevices()
 {
     if (m_deviceEnumerator) {
-        m_deviceEnumerator->UnregisterEndpointNotificationCallback(m_notificationClient.get());
+        m_deviceEnumerator->UnregisterEndpointNotificationCallback(m_notificationClient.Get());
+    }
+    if (m_warmUpAudioClient) {
+        HRESULT hr = m_warmUpAudioClient->Stop();
+        if (FAILED(hr)) {
+            qWarning() << "Failed to stop audio engine" << hr;
+        }
     }
 
-    m_deviceEnumerator.reset();
-    m_notificationClient.reset();
+    m_deviceEnumerator.Reset();
+    m_notificationClient.Reset();
+    m_warmUpAudioClient.Reset();
 
     CoUninitialize();
 }
 
 QList<QAudioDevice> QWindowsMediaDevices::availableDevices(QAudioDevice::Mode mode) const
 {
+    if (!m_deviceEnumerator)
+        return {};
+
     const auto audioOut = mode == QAudioDevice::Output;
 
     const auto defaultAudioDeviceID = [this, audioOut]{
         const auto dataFlow = audioOut ? EDataFlow::eRender : EDataFlow::eCapture;
-        QWindowsIUPointer<IMMDevice> dev;
-        LPWSTR id = nullptr;
+        ComPtr<IMMDevice> dev;
+        QComTaskResource<WCHAR> id;
         QString sid;
 
-        if (SUCCEEDED(m_deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eMultimedia, dev.address()))) {
-            if (dev && SUCCEEDED(dev->GetId(&id))) {
-                sid = QString::fromWCharArray(id);
-                CoTaskMemFree(id);
+        if (SUCCEEDED(m_deviceEnumerator->GetDefaultAudioEndpoint(dataFlow, ERole::eMultimedia, dev.GetAddressOf()))) {
+            if (dev && SUCCEEDED(dev->GetId(id.address()))) {
+                sid = QString::fromWCharArray(id.get());
             }
         }
         return sid.toUtf8();
@@ -236,10 +247,10 @@ QList<QAudioDevice> QWindowsMediaDevices::availableDevices(QAudioDevice::Mode mo
         if (waveMessage(DRV_QUERYFUNCTIONINSTANCEID, id.data(), len) != MMSYSERR_NOERROR)
             continue;
 
-        QWindowsIUPointer<IMMDevice> device;
-        QWindowsIUPointer<IPropertyStore> props;
-        if (FAILED(m_deviceEnumerator->GetDevice(id.data(), device.address()))
-            || FAILED(device->OpenPropertyStore(STGM_READ, props.address()))) {
+        ComPtr<IMMDevice> device;
+        ComPtr<IPropertyStore> props;
+        if (FAILED(m_deviceEnumerator->GetDevice(id.data(), device.GetAddressOf()))
+            || FAILED(device->OpenPropertyStore(STGM_READ, props.GetAddressOf()))) {
             continue;
         }
 
@@ -275,7 +286,7 @@ QPlatformAudioSource *QWindowsMediaDevices::createAudioSource(const QAudioDevice
                                                               QObject *parent)
 {
     const auto *devInfo = static_cast<const QWindowsAudioDeviceInfo *>(deviceInfo.handle());
-    return new QWindowsAudioSource(devInfo->waveId(), parent);
+    return new QWindowsAudioSource(devInfo->immDev(), parent);
 }
 
 QPlatformAudioSink *QWindowsMediaDevices::createAudioSink(const QAudioDevice &deviceInfo,
@@ -283,6 +294,82 @@ QPlatformAudioSink *QWindowsMediaDevices::createAudioSink(const QAudioDevice &de
 {
     const auto *devInfo = static_cast<const QWindowsAudioDeviceInfo *>(deviceInfo.handle());
     return new QWindowsAudioSink(devInfo->immDev(), parent);
+}
+
+static bool isPrepareAudioEnabled()
+{
+    static bool isDisableAudioPrepareSet = false;
+    static const int disableAudioPrepare =
+            qEnvironmentVariableIntValue("QT_DISABLE_AUDIO_PREPARE", &isDisableAudioPrepareSet);
+
+    return !isDisableAudioPrepareSet || disableAudioPrepare == 0;
+}
+
+void QWindowsMediaDevices::prepareAudio()
+{
+    if (!isPrepareAudioEnabled())
+        return;
+
+    if (m_isAudioClientWarmedUp.exchange(true))
+        return;
+
+    ComPtr<IMMDeviceEnumerator> deviceEnumerator;
+    HRESULT hr = CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr, CLSCTX_ALL,
+                                  __uuidof(IMMDeviceEnumerator),
+                                  reinterpret_cast<void **>(deviceEnumerator.GetAddressOf()));
+    if (FAILED(hr)) {
+        qWarning() << "Failed to create device enumerator" << hr;
+        return;
+    }
+
+    ComPtr<IMMDevice> device;
+    hr = deviceEnumerator->GetDefaultAudioEndpoint(eRender, eConsole, device.GetAddressOf());
+    if (FAILED(hr)) {
+        if (hr != E_NOTFOUND)
+            qWarning() << "Failed to retrieve default audio endpoint" << hr;
+        return;
+    }
+
+    hr = device->Activate(__uuidof(IAudioClient3), CLSCTX_ALL, nullptr,
+                          reinterpret_cast<void **>(m_warmUpAudioClient.GetAddressOf()));
+    if (FAILED(hr)) {
+        qWarning() << "Failed to activate audio engine" << hr;
+        return;
+    }
+
+    QComTaskResource<WAVEFORMATEX> deviceFormat;
+    UINT32 currentPeriodInFrames = 0;
+    hr = m_warmUpAudioClient->GetCurrentSharedModeEnginePeriod(deviceFormat.address(),
+                                                               &currentPeriodInFrames);
+    if (FAILED(hr)) {
+        qWarning() << "Failed to retrieve the current format and periodicity of the audio engine"
+                   << hr;
+        return;
+    }
+
+    UINT32 defaultPeriodInFrames = 0;
+    UINT32 fundamentalPeriodInFrames = 0;
+    UINT32 minPeriodInFrames = 0;
+    UINT32 maxPeriodInFrames = 0;
+    hr = m_warmUpAudioClient->GetSharedModeEnginePeriod(deviceFormat.get(), &defaultPeriodInFrames,
+                                                        &fundamentalPeriodInFrames,
+                                                        &minPeriodInFrames, &maxPeriodInFrames);
+    if (FAILED(hr)) {
+        qWarning() << "Failed to retrieve the range of periodicities supported by the audio engine"
+                   << hr;
+        return;
+    }
+
+    hr = m_warmUpAudioClient->InitializeSharedAudioStream(
+            AUDCLNT_SHAREMODE_SHARED, minPeriodInFrames, deviceFormat.get(), nullptr);
+    if (FAILED(hr)) {
+        qWarning() << "Failed to initialize audio engine stream" << hr;
+        return;
+    }
+
+    hr = m_warmUpAudioClient->Start();
+    if (FAILED(hr))
+        qWarning() << "Failed to start audio engine" << hr;
 }
 
 QT_END_NAMESPACE

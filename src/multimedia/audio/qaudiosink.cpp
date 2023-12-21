@@ -45,7 +45,7 @@ QT_BEGIN_NAMESPACE
 
     After the file has finished playing, we need to stop the device:
 
-    \snippet multimedia-snippets/audio.cpp Audio output state changed
+    \snippet multimedia-snippets/audio.cpp Audio output stop
 
     At any given time, the QAudioSink will be in one of four states:
     active, suspended, stopped, or idle. These states are described
@@ -58,8 +58,9 @@ QT_BEGIN_NAMESPACE
 
     If an error occurs, you can fetch the \l{QAudio::Error}{error
     type} with the error() function. Please see the QAudio::Error enum
-    for a description of the possible errors that are reported.  When
-    an error is encountered, the state changes to QAudio::StoppedState.
+    for a description of the possible errors that are reported. When
+    QAudio::UnderrunError is encountered, the state changes to QAudio::IdleState,
+    when another error is encountered, the state changes to QAudio::StoppedState.
     You can check for errors by connecting to the stateChanged()
     signal:
 
@@ -88,7 +89,12 @@ QAudioSink::QAudioSink(const QAudioDevice &audioDevice, const QAudioFormat &form
 {
     d = QPlatformMediaDevices::instance()->audioOutputDevice(format, audioDevice, parent);
     if (d)
-        connect(d, SIGNAL(stateChanged(QAudio::State)), SIGNAL(stateChanged(QAudio::State)));
+        connect(d, &QPlatformAudioSink::stateChanged, this, [this](QAudio::State state) {
+            // if the signal has been emitted from another thread,
+            // the state may be already changed by main one
+            if (state == d->state())
+                emit stateChanged(state);
+        });
     else
         qWarning() << ("No audio device detected");
 }
@@ -203,10 +209,9 @@ void QAudioSink::suspend()
 /*!
     Resumes processing audio data after a suspend().
 
-    Sets error() to QAudio::NoError.
-    Sets state() to QAudio::ActiveState if you previously called start(QIODevice*).
-    Sets state() to QAudio::IdleState if you previously called start().
-    emits stateChanged() signal.
+    Sets state() to the state the sink had when suspend() was called, and sets
+    error() to QAudioError::NoError. This function does nothing if the audio sink's
+    state is not QAudio::SuspendedState.
 */
 void QAudioSink::resume()
 {

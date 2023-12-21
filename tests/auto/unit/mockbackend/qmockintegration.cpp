@@ -1,7 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qmockintegration_p.h"
+#include "qmockintegration.h"
 #include "qmockmediaplayer.h"
 #include "qmockaudiodecoder.h"
 #include "qmockcamera.h"
@@ -9,6 +9,7 @@
 #include "qmockvideosink.h"
 #include "qmockimagecapture.h"
 #include "qmockaudiooutput.h"
+#include "qmocksurfacecapture.h"
 #include <private/qcameradevice_p.h>
 #include <private/qplatformvideodevices_p.h>
 
@@ -55,6 +56,18 @@ public:
         m_cameraDevices.append(info->create());
     }
 
+    void addNewCamera()
+    {
+        auto info = new QCameraDevicePrivate;
+        info->description = QLatin1String("newCamera") + QString::number(m_cameraDevices.size());
+        info->id =
+                QString(QLatin1String("camera") + QString::number(m_cameraDevices.size())).toUtf8();
+        info->isDefault = false;
+        m_cameraDevices.append(info->create());
+
+        emit videoInputsChanged();
+    }
+
     QList<QCameraDevice> videoDevices() const override
     {
         return m_cameraDevices;
@@ -66,14 +79,10 @@ private:
 
 QMockIntegration::QMockIntegration()
 {
-    setIntegration(this);
-    m_videoDevices = new QMockVideoDevices(this);
+    m_videoDevices = std::make_unique<QMockVideoDevices>(this);
 }
 
-QMockIntegration::~QMockIntegration()
-{
-    setIntegration(nullptr);
-}
+QMockIntegration::~QMockIntegration() = default;
 
 QMaybe<QPlatformAudioDecoder *> QMockIntegration::createAudioDecoder(QAudioDecoder *decoder)
 {
@@ -112,6 +121,26 @@ QMaybe<QPlatformMediaRecorder *> QMockIntegration::createRecorder(QMediaRecorder
     return new QMockMediaEncoder(recorder);
 }
 
+QPlatformSurfaceCapture *QMockIntegration::createScreenCapture(QScreenCapture * /*capture*/)
+{
+    if (m_flags & NoCaptureInterface)
+        m_lastScreenCapture = nullptr;
+    else
+        m_lastScreenCapture = new QMockSurfaceCapture(QPlatformSurfaceCapture::ScreenSource{});
+
+    return m_lastScreenCapture;
+}
+
+QPlatformSurfaceCapture *QMockIntegration::createWindowCapture(QWindowCapture *)
+{
+    if (m_flags & NoCaptureInterface)
+        m_lastWindowCapture = nullptr;
+    else
+        m_lastWindowCapture = new QMockSurfaceCapture(QPlatformSurfaceCapture::WindowSource{});
+
+    return m_lastWindowCapture;
+}
+
 QMaybe<QPlatformMediaCaptureSession *> QMockIntegration::createCaptureSession()
 {
     if (m_flags & NoCaptureInterface)
@@ -130,6 +159,11 @@ QMaybe<QPlatformVideoSink *> QMockIntegration::createVideoSink(QVideoSink *sink)
 QMaybe<QPlatformAudioOutput *> QMockIntegration::createAudioOutput(QAudioOutput *q)
 {
     return new QMockAudioOutput(q);
+}
+
+void QMockIntegration::addNewCamera()
+{
+    static_cast<QMockVideoDevices &>(*m_videoDevices).addNewCamera();
 }
 
 bool QMockCamera::simpleCamera = false;

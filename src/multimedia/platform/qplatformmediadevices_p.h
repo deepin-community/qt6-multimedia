@@ -17,10 +17,11 @@
 
 #include <private/qtmultimediaglobal_p.h>
 #include <qlist.h>
+#include <qobject.h>
+#include <mutex>
 
 QT_BEGIN_NAMESPACE
 
-class QObject;
 class QMediaDevices;
 class QAudioDevice;
 class QCameraDevice;
@@ -29,46 +30,38 @@ class QPlatformAudioSink;
 class QAudioFormat;
 class QPlatformMediaIntegration;
 
-class Q_MULTIMEDIA_EXPORT QPlatformMediaDevices
+class Q_MULTIMEDIA_EXPORT QPlatformMediaDevices : public QObject
 {
+    Q_OBJECT
 public:
     QPlatformMediaDevices();
-    virtual ~QPlatformMediaDevices();
+    ~QPlatformMediaDevices() override;
 
     static void setDevices(QPlatformMediaDevices *);
     static QPlatformMediaDevices *instance();
 
-    virtual QList<QAudioDevice> audioInputs() const = 0;
-    virtual QList<QAudioDevice> audioOutputs() const = 0;
-    virtual QList<QCameraDevice> videoInputs() const;
-    virtual QPlatformAudioSource *createAudioSource(const QAudioDevice &deviceInfo,
-                                                    QObject *parent) = 0;
-    virtual QPlatformAudioSink *createAudioSink(const QAudioDevice &deviceInfo,
-                                                QObject *parent) = 0;
+    virtual QList<QAudioDevice> audioInputs() const;
+    virtual QList<QAudioDevice> audioOutputs() const;
+
+    virtual QPlatformAudioSource *createAudioSource(const QAudioDevice &, QObject *parent);
+    virtual QPlatformAudioSink *createAudioSink(const QAudioDevice &, QObject *parent);
 
     QPlatformAudioSource *audioInputDevice(const QAudioFormat &format,
                                            const QAudioDevice &deviceInfo, QObject *parent);
     QPlatformAudioSink *audioOutputDevice(const QAudioFormat &format,
                                           const QAudioDevice &deviceInfo, QObject *parent);
 
-    void addMediaDevices(QMediaDevices *m)
-    {
-        m_devices.append(m);
-    }
-    void removeMediaDevices(QMediaDevices *m)
-    {
-        m_devices.removeAll(m);
-    }
+    virtual void prepareAudio();
 
-    QList<QMediaDevices *> allMediaDevices() const { return m_devices; }
+    void initVideoDevicesConnection();
 
-    void videoInputsChanged() const;
+Q_SIGNALS:
+    void audioInputsChanged();
+    void audioOutputsChanged();
+    void videoInputsChanged();
 
-protected:
-    void audioInputsChanged() const;
-    void audioOutputsChanged() const;
-
-    QList<QMediaDevices *> m_devices;
+private:
+    std::once_flag m_videoDevicesConnectionFlag;
 };
 
 QT_END_NAMESPACE

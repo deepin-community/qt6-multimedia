@@ -2,4 +2,4 @@
 # instead of a private one. The only symbol for this library is the one loading
 # the QML definitions.
 qml6-module-qtquick3d-spatialaudio: package-name-doesnt-match-sonames libQt6Quick3DSpatialAudio6
-qml6-module-qtquick3d-spatialaudio: no-symbols-control-file usr/lib/x86_64-linux-gnu/libQt6Quick3DSpatialAudio.so.6.4.2
+qml6-module-qtquick3d-spatialaudio: no-symbols-control-file usr/lib/*/libQt6Quick3DSpatialAudio.so.6.*

@@ -25,16 +25,18 @@ class QFFmpegMediaIntegration : public QPlatformMediaIntegration
 {
 public:
     QFFmpegMediaIntegration();
-    ~QFFmpegMediaIntegration();
 
-    static QFFmpegMediaIntegration *instance() { return static_cast<QFFmpegMediaIntegration *>(QPlatformMediaIntegration::instance()); }
-    QPlatformMediaFormatInfo *formatInfo() override;
-
+    static QFFmpegMediaIntegration *instance()
+    {
+        return static_cast<QFFmpegMediaIntegration *>(QPlatformMediaIntegration::instance());
+    }
 
     QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *decoder) override;
     QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() override;
     QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *player) override;
     QMaybe<QPlatformCamera *> createCamera(QCamera *) override;
+    QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) override;
+    QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) override;
     QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *) override;
     QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *) override;
 
@@ -43,7 +45,8 @@ public:
     QMaybe<QPlatformAudioInput *> createAudioInput(QAudioInput *input) override;
 //    QPlatformAudioOutput *createAudioOutput(QAudioOutput *) override;
 
-    QFFmpegMediaFormatInfo *m_formatsInfo = nullptr;
+protected:
+    QPlatformMediaFormatInfo *createFormatInfo() override;
 };
 
 QT_END_NAMESPACE

@@ -4,8 +4,14 @@
 #include "qplatformmediaplayer_p.h"
 #include <private/qmediaplayer_p.h>
 #include "qmediaplayer.h"
+#include "qplatformmediadevices_p.h"
 
 QT_BEGIN_NAMESPACE
+
+QPlatformMediaPlayer::QPlatformMediaPlayer(QMediaPlayer *parent) : player(parent)
+{
+    QPlatformMediaDevices::instance()->prepareAudio();
+}
 
 QPlatformMediaPlayer::~QPlatformMediaPlayer()
 {
@@ -29,7 +35,19 @@ void QPlatformMediaPlayer::mediaStatusChanged(QMediaPlayer::MediaStatus status)
 
 void QPlatformMediaPlayer::error(int error, const QString &errorString)
 {
-    player->d_func()->setError(error, errorString);
+    player->d_func()->setError(QMediaPlayer::Error(error), errorString);
+}
+
+void *QPlatformMediaPlayer::nativePipeline(QMediaPlayer *player)
+{
+    if (!player)
+        return nullptr;
+
+    auto playerPrivate = player->d_func();
+    if (!playerPrivate || !playerPrivate->control)
+        return nullptr;
+
+    return playerPrivate->control->nativePipeline();
 }
 
 QT_END_NAMESPACE
