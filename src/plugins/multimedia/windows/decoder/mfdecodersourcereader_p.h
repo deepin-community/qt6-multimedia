@@ -21,9 +21,9 @@
 
 #include <QtCore/qobject.h>
 #include "qaudioformat.h"
-#include <private/qwindowsiupointer_p.h>
+#include <private/qcomptr_p.h>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class MFDecoderSourceReader : public QObject, public IMFSourceReaderCallback
 {
@@ -32,8 +32,8 @@ public:
     MFDecoderSourceReader() {}
     ~MFDecoderSourceReader() override {}
 
-    void clearSource() { m_sourceReader.reset(); }
-    QWindowsIUPointer<IMFMediaType> setSource(IMFMediaSource *source, QAudioFormat::SampleFormat);
+    void clearSource() { m_sourceReader.Reset(); }
+    ComPtr<IMFMediaType> setSource(IMFMediaSource *source, QAudioFormat::SampleFormat);
 
     void readNextSample();
 
@@ -49,12 +49,15 @@ public:
     STDMETHODIMP OnEvent(DWORD, IMFMediaEvent *) override { return S_OK; }
 
 Q_SIGNALS:
-    void newSample(QWindowsIUPointer<IMFSample>);
+    void newSample(ComPtr<IMFSample>);
     void finished();
 
 private:
     long m_cRef = 1;
-    QWindowsIUPointer<IMFSourceReader> m_sourceReader;
+    ComPtr<IMFSourceReader> m_sourceReader;
 
 };
+
+QT_END_NAMESPACE
+
 #endif//MFDECODERSOURCEREADER_H

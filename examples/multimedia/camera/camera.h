@@ -4,19 +4,21 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
+#include <QAudioInput>
 #include <QCamera>
 #include <QImageCapture>
-#include <QMediaRecorder>
-#include <QScopedPointer>
-#include <QMediaMetaData>
 #include <QMediaCaptureSession>
 #include <QMediaDevices>
-#include <QAudioInput>
+#include <QMediaMetaData>
+#include <QMediaRecorder>
+#include <QScopedPointer>
 
 #include <QMainWindow>
 
 QT_BEGIN_NAMESPACE
-namespace Ui { class Camera; }
+namespace Ui {
+class Camera;
+}
 class QActionGroup;
 QT_END_NAMESPACE
 
@@ -33,6 +35,8 @@ public slots:
     void saveMetaData();
 
 private slots:
+    void init();
+
     void setCamera(const QCameraDevice &cameraDevice);
 
     void startCamera();
@@ -81,7 +85,7 @@ protected:
 private:
     Ui::Camera *ui;
 
-    QActionGroup *videoDevicesGroup  = nullptr;
+    QActionGroup *videoDevicesGroup = nullptr;
 
     QMediaDevices m_devices;
     QScopedPointer<QImageCapture> m_imageCapture;

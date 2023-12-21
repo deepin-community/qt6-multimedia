@@ -76,7 +76,6 @@ private:
     bool m_continuousVideoFocusSupported = false;
     bool m_focusPointSupported = false;
 
-    float m_maximumZoom;
     QList<int> m_zoomRatios;
 
     QList<QCamera::ExposureMode> m_supportedExposureModes;
@@ -87,6 +86,7 @@ private:
     bool isFlashSupported = false;
     bool isFlashAutoSupported = false;
     bool isTorchSupported = false;
+    bool isPendingSetActive = false;
     QCameraDevice m_cameraDev;
 
     QMap<QCamera::WhiteBalanceMode, QString> m_supportedWhiteBalanceModes;

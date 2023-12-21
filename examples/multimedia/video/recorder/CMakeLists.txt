@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 cmake_minimum_required(VERSION 3.16)
 
 project(recorder LANGUAGES CXX)
@@ -18,10 +21,11 @@ qt_add_executable(recorder
 
 set(resource_files
     "main.qml"
+    "main_no_permissions.qml"
     "qmldir"
     "MediaList.qml"
     "AudioInputSelect.qml"
-    "CameraSelect.qml"
+    "VideoSourceSelect.qml"
     "RecordButton.qml"
     "Controls.qml"
     "StyleParameter.qml"

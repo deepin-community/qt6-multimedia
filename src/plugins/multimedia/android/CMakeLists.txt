@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 qt_internal_add_plugin(QAndroidMediaPlugin
     OUTPUT_NAME androidmediaplugin
     PLUGIN_TYPE multimedia
@@ -26,6 +29,12 @@ qt_internal_add_plugin(QAndroidMediaPlugin
         wrappers/jni/androidmultimediautils.cpp wrappers/jni/androidmultimediautils_p.h
         wrappers/jni/androidsurfacetexture.cpp wrappers/jni/androidsurfacetexture_p.h
         wrappers/jni/androidsurfaceview.cpp wrappers/jni/androidsurfaceview_p.h
+    NO_UNITY_BUILD_SOURCES
+        # Resolves two problems:
+        #   - Collision of `rwLock` with wrappers/jni/androidmediaplayer.cpp
+        #   - and redefinition of `notifyFrameAvailable` with different signature
+        #     with wrappers/jni/androidsurfacetexture.cpp
+        wrappers/jni/androidcamera.cpp
     INCLUDE_DIRECTORIES
         audio
         common
@@ -44,8 +53,7 @@ set_property(TARGET QAndroidMediaPlugin APPEND PROPERTY QT_ANDROID_BUNDLED_JAR_D
     jar/Qt${QtMultimedia_VERSION_MAJOR}AndroidMultimedia.jar:org.qtproject.qt.android.multimedia.QtMultimediaUtils
 )
 set_property(TARGET QAndroidMediaPlugin APPEND PROPERTY QT_ANDROID_LIB_DEPENDENCIES
-    plugins/multimedia/libplugins_multimedia_androidmediaplugin.so
-    lib/libQt6MultimediaQuick.so:Qt6Quick
+    ${INSTALL_PLUGINSDIR}/multimedia/libplugins_multimedia_androidmediaplugin.so
 )
 set_property(TARGET QAndroidMediaPlugin APPEND PROPERTY QT_ANDROID_PERMISSIONS
     android.permission.CAMERA android.permission.RECORD_AUDIO

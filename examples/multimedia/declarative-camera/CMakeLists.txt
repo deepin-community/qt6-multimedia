@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 cmake_minimum_required(VERSION 3.16)
 project(declarative-camera LANGUAGES CXX)
 
@@ -40,6 +43,7 @@ set(declarative-camera_resource_files
     "CameraListPopup.qml"
     "CameraPropertyButton.qml"
     "CameraPropertyPopup.qml"
+    "FlashControl.qml"
     "PhotoCaptureControls.qml"
     "PhotoPreview.qml"
     "Popup.qml"

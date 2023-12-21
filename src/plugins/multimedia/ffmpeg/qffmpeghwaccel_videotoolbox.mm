@@ -9,11 +9,10 @@
 
 #include <qvideoframeformat.h>
 #include <qffmpegvideobuffer_p.h>
+#include <qloggingcategory.h>
 #include "private/qvideotexturehelper_p.h"
 
-#include <private/qrhi_p.h>
-#include <private/qrhimetal_p.h>
-#include <private/qrhigles2_p.h>
+#include <rhi/qrhi.h>
 
 #include <CoreVideo/CVMetalTexture.h>
 #include <CoreVideo/CVMetalTextureCache.h>
@@ -28,6 +27,8 @@
 #import <Metal/Metal.h>
 
 QT_BEGIN_NAMESPACE
+
+static Q_LOGGING_CATEGORY(qLcVideotoolbox, "qt.multimedia.ffmpeg.videotoolbox")
 
 namespace QFFmpeg
 {
@@ -59,7 +60,6 @@ VideoToolBoxTextureConverter::VideoToolBoxTextureConverter(QRhi *rhi)
         return;
 
     if (rhi->backend() == QRhi::Metal) {
-        qDebug() << "    using metal backend";
         const auto *metal = static_cast<const QRhiMetalNativeHandles *>(rhi->nativeHandles());
 
         // Create a Metal Core Video texture cache from the pixel buffer.
@@ -170,13 +170,13 @@ TextureSet *VideoToolBoxTextureConverter::getTextures(AVFrame *frame)
     bool needsConversion = false;
     QVideoFrameFormat::PixelFormat pixelFormat = QFFmpegVideoBuffer::toQtPixelFormat(HWAccel::format(frame), &needsConversion);
     if (needsConversion) {
-        qDebug() << "XXXXXXXXXXXX pixel format needs conversion" << pixelFormat << HWAccel::format(frame);
+        // qDebug() << "XXXXXXXXXXXX pixel format needs conversion" << pixelFormat << HWAccel::format(frame);
         return nullptr;
     }
 
     CVPixelBufferRef buffer = (CVPixelBufferRef)frame->data[3];
 
-    VideoToolBoxTextureSet *textureSet = new VideoToolBoxTextureSet;
+    auto textureSet = std::make_unique<VideoToolBoxTextureSet>();
     textureSet->m_buffer = buffer;
     textureSet->rhi = rhi;
     CVPixelBufferRetain(buffer);
@@ -219,8 +219,10 @@ TextureSet *VideoToolBoxTextureConverter::getTextures(AVFrame *frame)
                         buffer,
                         nil,
                         &textureSet->cvOpenGLTexture);
-        if (cvret != kCVReturnSuccess)
-            qWarning() << "OpenGL texture creation failed" << cvret;
+        if (cvret != kCVReturnSuccess) {
+            qCWarning(qLcVideotoolbox) << "OpenGL texture creation failed" << cvret;
+            return nullptr;
+        }
 
         Q_ASSERT(CVOpenGLTextureGetTarget(textureSet->cvOpenGLTexture) == GL_TEXTURE_RECTANGLE);
 #endif
@@ -240,13 +242,15 @@ TextureSet *VideoToolBoxTextureConverter::getTextures(AVFrame *frame)
                         GL_UNSIGNED_BYTE,
                         0,
                         &textureSet->cvOpenGLESTexture);
-        if (cvret != kCVReturnSuccess)
-            qWarning() << "OpenGL ES texture creation failed" << cvret;
+        if (cvret != kCVReturnSuccess) {
+            qCWarning(qLcVideotoolbox) << "OpenGL ES texture creation failed" << cvret;
+            return nullptr;
+        }
 #endif
 #endif
     }
 
-    return textureSet;
+    return textureSet.release();
 }
 
 VideoToolBoxTextureSet::~VideoToolBoxTextureSet()

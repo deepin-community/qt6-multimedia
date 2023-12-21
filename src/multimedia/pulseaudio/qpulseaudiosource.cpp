@@ -12,10 +12,11 @@
 #include "qpulsehelpers_p.h"
 #include <sys/types.h>
 #include <unistd.h>
+#include <mutex> // for lock_guard
 
 QT_BEGIN_NAMESPACE
 
-const int PeriodTimeMs = 50;
+const int SourcePeriodTimeMs = 50;
 
 static void inputStreamReadCallback(pa_stream *stream, size_t length, void *userdata)
 {
@@ -101,7 +102,7 @@ QPulseAudioSource::QPulseAudioSource(const QByteArray &device, QObject *parent)
     , m_bytesAvailable(0)
     , m_bufferSize(0)
     , m_periodSize(0)
-    , m_periodTime(PeriodTimeMs)
+    , m_periodTime(SourcePeriodTimeMs)
     , m_stream(nullptr)
     , m_device(device)
 {
@@ -262,7 +263,7 @@ bool QPulseAudioSource::open()
     pa_stream_set_underflow_callback(m_stream, inputStreamUnderflowCallback, this);
     pa_stream_set_overflow_callback(m_stream, inputStreamOverflowCallback, this);
 
-    m_periodSize = pa_usec_to_bytes(PeriodTimeMs*1000, &spec);
+    m_periodSize = pa_usec_to_bytes(SourcePeriodTimeMs*1000, &spec);
 
     int flags = 0;
     pa_buffer_attr buffer_attr;
@@ -326,7 +327,7 @@ void QPulseAudioSource::close()
     QPulseAudioEngine *pulseEngine = QPulseAudioEngine::instance();
 
     if (m_stream) {
-        pulseEngine->lock();
+        std::lock_guard lock(*pulseEngine);
 
         pa_stream_set_state_callback(m_stream, nullptr, nullptr);
         pa_stream_set_read_callback(m_stream, nullptr, nullptr);
@@ -336,8 +337,6 @@ void QPulseAudioSource::close()
         pa_stream_disconnect(m_stream);
         pa_stream_unref(m_stream);
         m_stream = nullptr;
-
-        pulseEngine->unlock();
     }
 
     disconnect(pulseEngine, &QPulseAudioEngine::contextFailed, this, &QPulseAudioSource::onPulseContextFailed);
@@ -477,15 +476,13 @@ void QPulseAudioSource::resume()
 {
     if (m_deviceState == QAudio::SuspendedState || m_deviceState == QAudio::IdleState) {
         QPulseAudioEngine *pulseEngine = QPulseAudioEngine::instance();
-        pa_operation *operation;
 
-        pulseEngine->lock();
-
-        operation = pa_stream_cork(m_stream, 0, inputStreamSuccessCallback, nullptr);
-        pulseEngine->wait(operation);
-        pa_operation_unref(operation);
-
-        pulseEngine->unlock();
+        {
+            std::lock_guard lock(*pulseEngine);
+            PAOperationUPtr operation(
+                    pa_stream_cork(m_stream, 0, inputStreamSuccessCallback, nullptr));
+            pulseEngine->wait(operation.get());
+        }
 
         m_timer->start(m_periodTime);
 
@@ -539,15 +536,11 @@ void QPulseAudioSource::suspend()
         m_timer->stop();
 
         QPulseAudioEngine *pulseEngine = QPulseAudioEngine::instance();
-        pa_operation *operation;
 
-        pulseEngine->lock();
+        std::lock_guard lock(*pulseEngine);
 
-        operation = pa_stream_cork(m_stream, 1, inputStreamSuccessCallback, nullptr);
-        pulseEngine->wait(operation);
-        pa_operation_unref(operation);
-
-        pulseEngine->unlock();
+        PAOperationUPtr operation(pa_stream_cork(m_stream, 1, inputStreamSuccessCallback, nullptr));
+        pulseEngine->wait(operation.get());
     }
 }
 

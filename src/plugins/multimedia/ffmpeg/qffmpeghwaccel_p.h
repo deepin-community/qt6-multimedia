@@ -19,6 +19,8 @@
 #include <private/qabstractvideobuffer_p.h>
 #include <qshareddata.h>
 #include <memory>
+#include <functional>
+#include <mutex>
 
 QT_BEGIN_NAMESPACE
 
@@ -82,36 +84,43 @@ private:
 
 class HWAccel
 {
-    AVBufferRef *m_hwDeviceContext = nullptr;
-    AVBufferRef *m_hwFramesContext = nullptr;
+    AVBufferUPtr m_hwDeviceContext;
+    AVBufferUPtr m_hwFramesContext;
+
+    mutable std::once_flag m_constraintsOnceFlag;
+    mutable AVHWFramesConstraintsUPtr m_constraints;
 
 public:
     ~HWAccel();
 
-    static std::unique_ptr<HWAccel> create(const AVCodec *decoder);
     static std::unique_ptr<HWAccel> create(AVHWDeviceType deviceType);
-    static std::unique_ptr<HWAccel> findHardwareAccelForCodecID(AVCodecID id);
 
-    static const AVCodec *hardwareDecoderForCodecId(AVCodecID id);
-    const AVCodec *hardwareEncoderForCodecId(AVCodecID id) const;
+    static std::pair<const AVCodec *, std::unique_ptr<HWAccel>>
+    findEncoderWithHwAccel(AVCodecID id,
+                           const std::function<bool(const HWAccel &)>& hwAccelPredicate = nullptr);
+
+    static std::pair<const AVCodec *, std::unique_ptr<HWAccel>>
+    findDecoderWithHwAccel(AVCodecID id,
+                           const std::function<bool(const HWAccel &)>& hwAccelPredicate = nullptr);
 
     AVHWDeviceType deviceType() const;
 
-    AVBufferRef *hwDeviceContextAsBuffer() const { return m_hwDeviceContext; }
+    AVBufferRef *hwDeviceContextAsBuffer() const { return m_hwDeviceContext.get(); }
     AVHWDeviceContext *hwDeviceContext() const;
     AVPixelFormat hwFormat() const;
+    const AVHWFramesConstraints *constraints() const;
 
     void createFramesContext(AVPixelFormat swFormat, const QSize &size);
-    AVBufferRef *hwFramesContextAsBuffer() const { return m_hwFramesContext; }
+    AVBufferRef *hwFramesContextAsBuffer() const { return m_hwFramesContext.get(); }
     AVHWFramesContext *hwFramesContext() const;
 
     static AVPixelFormat format(AVFrame *frame);
-    static std::pair<const AVHWDeviceType*, qsizetype> preferredDeviceTypes();
+    static const std::vector<AVHWDeviceType> &encodingDeviceTypes();
+
+    static const std::vector<AVHWDeviceType> &decodingDeviceTypes();
 
 private:
-    HWAccel(AVBufferRef *hwDeviceContext, AVBufferRef *hwFrameContext = nullptr)
-        : m_hwDeviceContext(hwDeviceContext), m_hwFramesContext(hwFrameContext)
-    {}
+    HWAccel(AVBufferUPtr hwDeviceContext) : m_hwDeviceContext(std::move(hwDeviceContext)) { }
 };
 
 }

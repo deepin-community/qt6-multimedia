@@ -15,7 +15,7 @@
 //TESTED_COMPONENT=src/multimedia
 
 #include "qmockmediacapturesession.h"
-#include "qmockintegration_p.h"
+#include "qmockintegration.h"
 
 QT_USE_NAMESPACE
 
@@ -34,20 +34,17 @@ private slots:
 
 private:
     QMediaRecorder *encoder = nullptr;
-    QMockIntegration *mockIntegration;
+    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 void tst_QAudioRecorder::init()
 {
-    mockIntegration = new QMockIntegration;
     encoder = nullptr;
 }
 
 void tst_QAudioRecorder::cleanup()
 {
     delete encoder;
-    delete mockIntegration;
-    mockIntegration = nullptr;
     encoder = nullptr;
 }
 

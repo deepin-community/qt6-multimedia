@@ -154,6 +154,7 @@ void tst_QMediaCaptureSession::record_video_without_preview()
     session.setCamera(&camera);
     camera.setActive(true);
     QTRY_COMPARE(cameraChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     recordOk(session);
     QVERIFY(!QTest::currentTestFailed());
@@ -333,6 +334,8 @@ void tst_QMediaCaptureSession::can_move_AudioOutput_between_sessions_and_player(
     if (QMediaDevices::audioOutputs().isEmpty())
         QSKIP("No audio output available");
 
+    QAudioOutput output;
+
     QMediaCaptureSession session0;
     QMediaCaptureSession session1;
     QMediaPlayer player;
@@ -340,7 +343,6 @@ void tst_QMediaCaptureSession::can_move_AudioOutput_between_sessions_and_player(
     QSignalSpy audioOutputChanged1(&session1, SIGNAL(audioOutputChanged()));
     QSignalSpy audioOutputChangedPlayer(&player, SIGNAL(audioOutputChanged()));
 
-    QAudioOutput output;
     {
         QMediaCaptureSession session2;
         QSignalSpy audioOutputChanged2(&session2, SIGNAL(audioOutputChanged()));
@@ -391,6 +393,7 @@ void tst_QMediaCaptureSession::can_add_and_remove_Camera()
     session.setCamera(&camera);
     camera.setActive(true);
     QTRY_COMPARE(cameraChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     session.setCamera(nullptr);
     QTRY_COMPARE(cameraChanged.size(), 2);
@@ -453,6 +456,7 @@ void tst_QMediaCaptureSession::can_disconnect_Camera_when_recording()
     camera.setActive(true);
     session.setCamera(&camera);
     QTRY_COMPARE(cameraChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     durationChanged.clear();
     recorder.record();
@@ -492,6 +496,7 @@ void tst_QMediaCaptureSession::can_add_and_remove_different_Cameras()
     camera.setActive(true);
     session.setCamera(&camera);
     QTRY_COMPARE(cameraChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     session.setCamera(nullptr);
     QTRY_COMPARE(cameraChanged.size(), 2);
@@ -499,6 +504,7 @@ void tst_QMediaCaptureSession::can_add_and_remove_different_Cameras()
     session.setCamera(&camera2);
     camera2.setActive(true);
     QTRY_COMPARE(cameraChanged.size(), 3);
+    QTRY_COMPARE(camera2.isActive(), true);
 
     recordOk(session);
     QVERIFY(!QTest::currentTestFailed());
@@ -528,12 +534,15 @@ void tst_QMediaCaptureSession::can_change_CameraDevice_on_attached_Camera()
     QVERIFY(!QTest::currentTestFailed());
 
     camera.setActive(true);
+    QTRY_COMPARE(camera.isActive(), true);
+
     recordOk(session);
     QVERIFY(!QTest::currentTestFailed());
 
     camera.setCameraDevice(cameraDevices[1]);
     camera.setActive(true);
     QTRY_COMPARE(cameraDeviceChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     recordOk(session);
     QVERIFY(!QTest::currentTestFailed());
@@ -596,6 +605,7 @@ void tst_QMediaCaptureSession::can_change_VideoOutput_when_recording()
     camera.setActive(true);
     session.setCamera(&camera);
     QTRY_COMPARE(cameraChanged.size(), 1);
+    QTRY_COMPARE(camera.isActive(), true);
 
     recorder.record();
     QTRY_VERIFY(recorder.recorderState() == QMediaRecorder::RecordingState);
@@ -720,6 +730,8 @@ void tst_QMediaCaptureSession::can_record_Camera_with_null_CameraDevice()
     QTRY_COMPARE(cameraChanged.size(), 1);
 
     camera.setActive(true);
+    QTRY_COMPARE(camera.isActive(), true);
+
     recordOk(session);
     QVERIFY(!QTest::currentTestFailed());
 }
@@ -789,6 +801,8 @@ void tst_QMediaCaptureSession::can_add_and_remove_ImageCapture()
     QVERIFY(!capture.isReadyForCapture());
 
     camera.setActive(true);
+    QTRY_COMPARE(camera.isActive(), true);
+
     QTRY_COMPARE(readyForCaptureChanged.size(), 1);
     QVERIFY(capture.isReadyForCapture());
 
@@ -856,6 +870,7 @@ void tst_QMediaCaptureSession::capture_is_not_available_when_Camera_is_null()
     session.setImageCapture(&capture);
     session.setCamera(&camera);
     camera.setActive(true);
+    QTRY_COMPARE(camera.isActive(), true);
 
     QTRY_COMPARE(readyForCaptureChanged.size(), 1);
     QVERIFY(capture.isReadyForCapture());
@@ -894,6 +909,7 @@ void tst_QMediaCaptureSession::can_add_ImageCapture_and_capture_during_recording
 
     session.setCamera(&camera);
     camera.setActive(true);
+    QTRY_COMPARE(camera.isActive(), true);
 
     session.setRecorder(&recorder);
     QTRY_COMPARE(recorderChanged.size(), 1);
@@ -962,6 +978,8 @@ void tst_QMediaCaptureSession::testAudioMute()
     QCOMPARE(spy.last()[0], false);
 
     recorder.stop();
+
+    QTRY_COMPARE(recorder.recorderState(), QMediaRecorder::StoppedState);
 
     QString actualLocation = recorder.actualLocation().toLocalFile();
 

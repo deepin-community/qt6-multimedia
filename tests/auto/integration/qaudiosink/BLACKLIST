@@ -1,1 +1,7 @@
-linux ci
+#QTBUG-113194
+[pullSuspendResume]
+macos ci
+
+#QTBUG-113194
+[pushSuspendResume]
+macos ci

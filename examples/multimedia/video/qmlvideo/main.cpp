@@ -1,18 +1,23 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR BSD-3-Clause
 
-#include <QtCore/QStandardPaths>
-#include <QtCore/QString>
-#include <QtCore/QStringList>
-#include <QtQml/QQmlContext>
-#include <QtQml/QQmlEngine>
-#include <QtGui/QGuiApplication>
-#include <QtQuick/QQuickItem>
-#include <QtQuick/QQuickView>
+#include "performancemonitor.h"
 #include "trace.h"
-
 #ifdef PERFORMANCEMONITOR_SUPPORT
-#include "performancemonitordeclarative.h"
+#    include "performancemonitordeclarative.h"
+#endif
+
+#include <QGuiApplication>
+#include <QQmlContext>
+#include <QQmlEngine>
+#include <QQuickItem>
+#include <QQuickView>
+#include <QStandardPaths>
+#include <QString>
+#include <QStringList>
+
+#if QT_CONFIG(permissions)
+  #include <QPermission>
 #endif
 
 static const QString DefaultFileName1 = "";
@@ -37,7 +42,7 @@ int main(int argc, char *argv[])
         const QByteArray arg = args.at(i).toUtf8();
         if (arg.startsWith('-')) {
             if ("-volume" == arg) {
-                if (i+1 < args.count())
+                if (i + 1 < args.count())
                     volume = 0.01 * args.at(++i).toInt();
                 else
                     qtTrace() << "Option \"-volume\" takes a value";
@@ -87,22 +92,34 @@ int main(int argc, char *argv[])
         rootObject->setProperty("perfMonitorsLogging", performanceMonitorState.logging);
         rootObject->setProperty("perfMonitorsVisible", performanceMonitorState.visible);
     }
-    QObject::connect(&viewer, SIGNAL(afterRendering()),
-                     rootObject, SLOT(qmlFramePainted()));
+    QObject::connect(&viewer, SIGNAL(afterRendering()), rootObject, SLOT(qmlFramePainted()));
 #endif
 
-    const QStringList moviesLocation = QStandardPaths::standardLocations(QStandardPaths::MoviesLocation);
-    const QUrl videoPath =
-            QUrl::fromLocalFile(moviesLocation.isEmpty() ?
-                                    app.applicationDirPath() :
-                                    moviesLocation.front());
+    const QStringList moviesLocation =
+            QStandardPaths::standardLocations(QStandardPaths::MoviesLocation);
+    const QUrl videoPath = QUrl::fromLocalFile(moviesLocation.isEmpty() ? app.applicationDirPath()
+                                                                        : moviesLocation.front());
     viewer.rootContext()->setContextProperty("videoPath", videoPath);
 
     QMetaObject::invokeMethod(rootObject, "init");
 
-    viewer.setMinimumSize(QSize(640, 360));
-    viewer.show();
+    auto setupView = [&viewer]() {
+        viewer.setMinimumSize(QSize(640, 360));
+        viewer.show();
+    };
+
+#if QT_CONFIG(permissions)
+    QCameraPermission cameraPermission;
+    qApp->requestPermission(cameraPermission, [&setupView](const QPermission &permission) {
+        // Show UI in any case. If there is no permission, the UI will just
+        // be disabled.
+        if (permission.status() != Qt::PermissionStatus::Granted)
+            qWarning("Camera permission is not granted! Camera will not be available.");
+        setupView();
+    });
+#else
+    setupView();
+#endif
 
     return app.exec();
 }
-

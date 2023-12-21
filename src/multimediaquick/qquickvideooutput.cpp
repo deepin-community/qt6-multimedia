@@ -15,7 +15,7 @@
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
+static Q_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
 
 namespace {
 
@@ -105,11 +105,11 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 
     m_sink = new QVideoSink(this);
     qRegisterMetaType<QVideoFrameFormat>();
-    QObject::connect(m_sink, &QVideoSink::videoFrameChanged,
+    QObject::connect(m_sink, &QVideoSink::videoFrameChanged, this,
                      [&](const QVideoFrame &frame) {
                          setFrame(frame);
                          emit frameUpdated(frame.size());
-                     });
+                     }, Qt::DirectConnection);
 
     QObject::connect(this, &QQuickVideoOutput::frameUpdated,
                      this, &QQuickVideoOutput::_q_newFrame);

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "private/qabstractvideobuffer_p.h"
+#include "private/qcameradevice_p.h"
 #include "avfcamerarenderer_p.h"
 #include "avfcamerasession_p.h"
 #include "avfcameraservice_p.h"
@@ -12,7 +13,7 @@
 #include "qvideosink.h"
 #include "qavfhelpers_p.h"
 
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 #import <AVFoundation/AVFoundation.h>
 
@@ -108,13 +109,26 @@ void AVFCameraRenderer::reconfigure()
     deviceOrientationChanged();
 }
 
-void AVFCameraRenderer::setOutputSettings(NSDictionary *settings)
+void AVFCameraRenderer::setOutputSettings()
 {
     if (!m_videoDataOutput)
         return;
 
-    m_videoDataOutput.videoSettings = settings;
-    AVFVideoSinkInterface::setOutputSettings(settings);
+    if (m_cameraSession) {
+        const auto format = m_cameraSession->cameraFormat();
+        if (format.pixelFormat() != QVideoFrameFormat::Format_Invalid)
+            setPixelFormat(format.pixelFormat(), QCameraFormatPrivate::getColorRange(format));
+    }
+
+    // If no output settings set from above,
+    // it's most likely because the rhi is OpenGL
+    // and the pixel format is not BGRA.
+    // We force this in the base class implementation
+    if (!m_outputSettings)
+        AVFVideoSinkInterface::setOutputSettings();
+
+    if (m_outputSettings)
+        m_videoDataOutput.videoSettings = m_outputSettings;
 }
 
 void AVFCameraRenderer::configureAVCaptureSession(AVFCameraSession *cameraSession)
@@ -235,7 +249,8 @@ void AVFCameraRenderer::handleViewfinderFrame()
     }
 }
 
-void AVFCameraRenderer::setPixelFormat(const QVideoFrameFormat::PixelFormat pixelFormat)
+void AVFCameraRenderer::setPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat,
+                                       QVideoFrameFormat::ColorRange colorRange)
 {
     if (rhi() && rhi()->backend() == QRhi::OpenGLES2) {
         if (pixelFormat != QVideoFrameFormat::Format_BGRA8888)
@@ -246,26 +261,34 @@ void AVFCameraRenderer::setPixelFormat(const QVideoFrameFormat::PixelFormat pixe
     // Default to 32BGRA pixel formats on the viewfinder, in case the requested
     // format can't be used (shouldn't happen unless the developers sets a wrong camera
     // format on the camera).
-    unsigned avPixelFormat = kCVPixelFormatType_32BGRA;
-    if (!QAVFHelpers::toCVPixelFormat(pixelFormat, avPixelFormat))
+    auto cvPixelFormat = QAVFHelpers::toCVPixelFormat(pixelFormat, colorRange);
+    if (cvPixelFormat == CvPixelFormatInvalid) {
+        cvPixelFormat = kCVPixelFormatType_32BGRA;
         qWarning() << "QCamera::setCameraFormat: couldn't convert requested pixel format, using ARGB32";
+    }
 
     bool isSupported = false;
     NSArray *supportedPixelFormats = m_videoDataOutput.availableVideoCVPixelFormatTypes;
     for (NSNumber *currentPixelFormat in supportedPixelFormats)
     {
-        if ([currentPixelFormat unsignedIntValue] == avPixelFormat) {
+        if ([currentPixelFormat unsignedIntValue] == cvPixelFormat) {
             isSupported = true;
             break;
         }
     }
 
     if (isSupported) {
-        NSDictionary* outputSettings = @{
-            (NSString *)kCVPixelBufferPixelFormatTypeKey: [NSNumber numberWithUnsignedInt:avPixelFormat],
-            (NSString *)kCVPixelBufferMetalCompatibilityKey: @true
+        NSDictionary *outputSettings = @{
+            (NSString *)
+            kCVPixelBufferPixelFormatTypeKey : [NSNumber numberWithUnsignedInt:cvPixelFormat]
+#ifndef Q_OS_IOS // On iOS this key generates a warning about 'unsupported key'.
+            ,
+            (NSString *)kCVPixelBufferMetalCompatibilityKey : @true
+#endif // Q_OS_IOS
         };
-        setOutputSettings(outputSettings);
+        if (m_outputSettings)
+            [m_outputSettings release];
+        m_outputSettings = [[NSDictionary alloc] initWithDictionary:outputSettings];
     } else {
         qWarning() << "QCamera::setCameraFormat: requested pixel format not supported. Did you use a camera format from another camera?";
     }

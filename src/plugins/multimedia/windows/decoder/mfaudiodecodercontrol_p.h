@@ -18,10 +18,10 @@
 #include "mfdecodersourcereader_p.h"
 #include <private/qplatformaudiodecoder_p.h>
 #include <sourceresolver_p.h>
-#include <private/qwindowsiupointer_p.h>
+#include <private/qcomptr_p.h>
 #include <private/qwindowsresampler_p.h>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class MFAudioDecoderControl : public QPlatformAudioDecoder
 {
@@ -51,13 +51,13 @@ public:
 private Q_SLOTS:
     void handleMediaSourceReady();
     void handleMediaSourceError(long hr);
-    void handleNewSample(QWindowsIUPointer<IMFSample>);
+    void handleNewSample(ComPtr<IMFSample>);
     void handleSourceFinished();
 
 private:
     void startReadingSource(IMFMediaSource *source);
 
-    QWindowsIUPointer<MFDecoderSourceReader>  m_decoderSourceReader;
+    ComPtr<MFDecoderSourceReader>  m_decoderSourceReader;
     SourceResolver         *m_sourceResolver;
     QWindowsResampler       m_resampler;
     QUrl                    m_source;
@@ -69,5 +69,7 @@ private:
     bool                    m_loadingSource = false;
     bool                    m_deferredStart = false;
 };
+
+QT_END_NAMESPACE
 
 #endif//MFAUDIODECODERCONTROL_H

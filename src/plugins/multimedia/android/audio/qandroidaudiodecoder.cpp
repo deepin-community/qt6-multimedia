@@ -19,7 +19,7 @@ QT_BEGIN_NAMESPACE
 
 static const char tempFile[] = "encoded.wav";
 constexpr int dequeueTimeout = 5000;
-Q_LOGGING_CATEGORY(adLogger, "QAndroidAudioDecoder")
+static Q_LOGGING_CATEGORY(adLogger, "QAndroidAudioDecoder")
 
 Decoder::Decoder()
     : m_format(AMediaFormat_new())
@@ -65,31 +65,26 @@ void Decoder::setSource(const QUrl &source)
     const QString mime = path.isValid() ? path.toString() : "";
 
     if (!mime.isEmpty() && !mime.contains("audio", Qt::CaseInsensitive)) {
-        emit error(QAudioDecoder::FormatError,
-                   tr("Cannot set source, invalid mime type for the source provided."));
+        m_formatError = tr("Cannot set source, invalid mime type for the source provided.");
         return;
     }
 
     if (!m_extractor)
         m_extractor = AMediaExtractor_new();
 
-    int fd = -1;
-    if (source.path().contains(QLatin1String("content"))) {
-        fd = QJniObject::callStaticMethod<jint>("org/qtproject/qt/android/QtNative",
-                                "openFdForContentUrl",
-                                "(Landroid/content/Context;Ljava/lang/String;Ljava/lang/String;)I",
-                                QNativeInterface::QAndroidApplication::context(),
-                                QJniObject::fromString(source.path()).object(),
-                                QJniObject::fromString(QLatin1String("r")).object());
-    } else {
-        fd = open(source.path().toStdString().c_str(), O_RDONLY);
-    }
+    QFile file(source.path());
+    if (!file.open(QFile::ReadOnly)) {
+        emit error(QAudioDecoder::ResourceError, tr("Cannot open the file"));
+        return;
+     }
+
+    const int fd = file.handle();
 
     if (fd < 0) {
-         emit error(QAudioDecoder::ResourceError, tr("Invalid fileDescriptor for source."));
-         return;
-     }
-    const int size = QFile(source.toString()).size();
+        emit error(QAudioDecoder::ResourceError, tr("Invalid fileDescriptor for source."));
+        return;
+    }
+    const int size = file.size();
     media_status_t status = AMediaExtractor_setDataSourceFd(m_extractor, fd, 0,
                                                             size > 0 ? size : LONG_MAX);
     close(fd);
@@ -99,7 +94,7 @@ void Decoder::setSource(const QUrl &source)
             AMediaExtractor_delete(m_extractor);
             m_extractor = nullptr;
         }
-        emit error(QAudioDecoder::ResourceError, tr("Setting source for Audio Decoder failed."));
+        m_formatError = tr("Setting source for Audio Decoder failed.");
     }
 }
 
@@ -140,6 +135,11 @@ void Decoder::createDecoder()
 
 void Decoder::doDecode()
 {
+    if (!m_formatError.isEmpty()) {
+        emit error(QAudioDecoder::FormatError, m_formatError);
+        return;
+    }
+
     if (!m_extractor) {
         emit error(QAudioDecoder::ResourceError, tr("Cannot decode, source not set."));
         return;
@@ -290,6 +290,12 @@ void QAndroidAudioDecoder::start()
 
     m_position = -1;
 
+    if (m_device && (!m_device->isOpen() || !m_device->isReadable())) {
+        emit error(QAudioDecoder::ResourceError,
+                   QString::fromUtf8("Unable to read from the specified device"));
+        return;
+    }
+
     if (!m_threadDecoder) {
         m_threadDecoder = new QThread(this);
         m_decoder->moveToThread(m_threadDecoder);
@@ -427,3 +433,5 @@ void QAndroidAudioDecoder::readDevice() {
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qandroidaudiodecoder_p.cpp"

@@ -6,13 +6,14 @@
 #include <private/qcameradevice_p.h>
 #include <private/qwindowsmfdefs_p.h>
 #include <private/qwindowsmultimediautils_p.h>
-#include <private/qwindowsiupointer_p.h>
+#include <private/qcomptr_p.h>
+#include <private/qcomtaskresource_p.h>
 
-#include <Dbt.h>
+#include <dbt.h>
 
 #include <mfapi.h>
 #include <mfreadwrite.h>
-#include <Mferror.h>
+#include <mferror.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -24,7 +25,7 @@ LRESULT QT_WIN_CALLBACK deviceNotificationWndProc(HWND hWnd, UINT message, WPARA
             auto wmd = reinterpret_cast<QWindowsVideoDevices *>(GetWindowLongPtr(hWnd, GWLP_USERDATA));
             if (wmd) {
                 if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
-                    wmd->videoInputsChanged();
+                    emit wmd->videoInputsChanged();
                 }
             }
         }
@@ -59,6 +60,8 @@ static HWND createMessageOnlyWindow()
 QWindowsVideoDevices::QWindowsVideoDevices(QPlatformMediaIntegration *integration)
     : QPlatformVideoDevices(integration)
 {
+    CoInitialize(nullptr);
+
     m_videoDeviceMsgWindow = createMessageOnlyWindow();
     if (m_videoDeviceMsgWindow) {
         SetWindowLongPtr(m_videoDeviceMsgWindow, GWLP_USERDATA, (LONG_PTR)this);
@@ -93,6 +96,8 @@ QWindowsVideoDevices::~QWindowsVideoDevices()
         DestroyWindow(m_videoDeviceMsgWindow);
         UnregisterClass(windowClassName, GetModuleHandle(nullptr));
     }
+
+    CoUninitialize();
 }
 
 static std::optional<QCameraFormat> createCameraFormat(IMFMediaType *mediaFormat)
@@ -128,13 +133,11 @@ static std::optional<QCameraFormat> createCameraFormat(IMFMediaType *mediaFormat
 
 static QString getString(IMFActivate *device, const IID &id)
 {
-    WCHAR *str = NULL;
+    QComTaskResource<WCHAR> str;
     UINT32 length = 0;
-    HRESULT hr = device->GetAllocatedString(id, &str, &length);
+    HRESULT hr = device->GetAllocatedString(id, str.address(), &length);
     if (SUCCEEDED(hr)) {
-        auto qstr = QString::fromWCharArray(str);
-        CoTaskMemFree(str);
-        return qstr;
+        return QString::fromWCharArray(str.get());
     } else {
         return {};
     }
@@ -151,8 +154,8 @@ static std::optional<QCameraDevice> createCameraDevice(IMFActivate *device)
     if (FAILED(hr))
         return {};
 
-    QWindowsIUPointer<IMFSourceReader> reader;
-    hr = MFCreateSourceReaderFromMediaSource(source, NULL, reader.address());
+    ComPtr<IMFSourceReader> reader;
+    hr = MFCreateSourceReaderFromMediaSource(source, NULL, reader.GetAddressOf());
     if (FAILED(hr))
         return {};
 
@@ -160,13 +163,13 @@ static std::optional<QCameraDevice> createCameraDevice(IMFActivate *device)
     QList<QCameraFormat> videoFormats;
     for (DWORD i = 0;; ++i) {
         // Loop through the supported formats for the video device
-        QWindowsIUPointer<IMFMediaType> mediaFormat;
+        ComPtr<IMFMediaType> mediaFormat;
         hr = reader->GetNativeMediaType((DWORD)MF_SOURCE_READER_FIRST_VIDEO_STREAM, i,
-                                        mediaFormat.address());
+                                        mediaFormat.GetAddressOf());
         if (FAILED(hr))
             break;
 
-        auto maybeCamera = createCameraFormat(mediaFormat.get());
+        auto maybeCamera = createCameraFormat(mediaFormat.Get());
         if (maybeCamera) {
             videoFormats << *maybeCamera;
             photoResolutions << maybeCamera->resolution();
@@ -182,20 +185,19 @@ static QList<QCameraDevice> readCameraDevices(IMFAttributes *attr)
 {
     QList<QCameraDevice> cameras;
     UINT32 count = 0;
-    IMFActivate **devices = NULL;
-    HRESULT hr = MFEnumDeviceSources(attr, &devices, &count);
+    IMFActivate **devicesRaw = nullptr;
+    HRESULT hr = MFEnumDeviceSources(attr, &devicesRaw, &count);
     if (SUCCEEDED(hr)) {
+        QComTaskResource<IMFActivate *[], QComDeleter> devices(devicesRaw, count);
+
         for (UINT32 i = 0; i < count; i++) {
             IMFActivate *device = devices[i];
             if (device) {
                 auto maybeCamera = createCameraDevice(device);
                 if (maybeCamera)
                     cameras << *maybeCamera;
-
-                device->Release();
             }
         }
-        CoTaskMemFree(devices);
     }
     return cameras;
 }
@@ -204,20 +206,20 @@ QList<QCameraDevice> QWindowsVideoDevices::videoDevices() const
 {
     QList<QCameraDevice> cameras;
 
-    QWindowsIUPointer<IMFAttributes> attr;
-    HRESULT hr = MFCreateAttributes(attr.address(), 2);
+    ComPtr<IMFAttributes> attr;
+    HRESULT hr = MFCreateAttributes(attr.GetAddressOf(), 2);
     if (FAILED(hr))
         return {};
 
     hr = attr->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE,
                        MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_GUID);
     if (SUCCEEDED(hr)) {
-        cameras << readCameraDevices(attr.get());
+        cameras << readCameraDevices(attr.Get());
 
         hr = attr->SetGUID(MF_DEVSOURCE_ATTRIBUTE_SOURCE_TYPE_VIDCAP_CATEGORY,
                            QMM_KSCATEGORY_SENSOR_CAMERA);
         if (SUCCEEDED(hr))
-            cameras << readCameraDevices(attr.get());
+            cameras << readCameraDevices(attr.Get());
     }
 
     return cameras;

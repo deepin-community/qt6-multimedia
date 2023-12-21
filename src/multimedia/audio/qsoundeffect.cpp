@@ -8,8 +8,9 @@
 #include "qaudiosink.h"
 #include "qmediadevices.h"
 #include <QtCore/qloggingcategory.h>
+#include <private/qplatformmediadevices_p.h>
 
-Q_LOGGING_CATEGORY(qLcSoundEffect, "qt.multimedia.soundeffect")
+static Q_LOGGING_CATEGORY(qLcSoundEffect, "qt.multimedia.soundeffect")
 
 QT_BEGIN_NAMESPACE
 
@@ -72,6 +73,8 @@ QSoundEffectPrivate::QSoundEffectPrivate(QSoundEffect *q, const QAudioDevice &au
     , m_audioDevice(audioDevice)
 {
     open(QIODevice::ReadOnly);
+
+    QPlatformMediaDevices::instance()->prepareAudio();
 }
 
 void QSoundEffectPrivate::sampleReady()
@@ -112,7 +115,7 @@ void QSoundEffectPrivate::stateChanged(QAudio::State state)
 {
     qCDebug(qLcSoundEffect) << this << "stateChanged " << state;
     if ((state == QAudio::IdleState && m_runningCount == 0) || state == QAudio::StoppedState)
-        emit q_ptr->stop();
+        q_ptr->stop();
 }
 
 qint64 QSoundEffectPrivate::readData(char *data, qint64 len)

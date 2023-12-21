@@ -17,6 +17,7 @@
 #include <qdebug.h>
 #include <qvideoframe.h>
 #include <private/qplatformimagecapture_p.h>
+#include <private/qplatformvideosink_p.h>
 #include <private/qmemoryvideobuffer_p.h>
 #include <private/qcameradevice_p.h>
 #include <private/qmediastoragelocation_p.h>
@@ -53,6 +54,8 @@ QAndroidCameraSession::QAndroidCameraSession(QObject *parent)
 
 QAndroidCameraSession::~QAndroidCameraSession()
 {
+    if (m_sink)
+        disconnect(m_retryPreviewConnection);
     close();
 }
 
@@ -290,25 +293,30 @@ void QAndroidCameraSession::applyResolution(const QSize &captureSize, bool resta
     // -- Set values on camera
 
     // fix the resolution of output based on the orientation
-    QSize outputResolution = adjustedViewfinderResolution;
+    QSize cameraOutputResolution = adjustedViewfinderResolution;
+    QSize videoOutputResolution = adjustedViewfinderResolution;
+    QSize currentVideoOutputResolution = m_videoOutput ? m_videoOutput->getVideoSize() : QSize(0, 0);
     const int rotation = currentCameraRotation();
     // only transpose if it's valid for the preview
-    if ((rotation == 90 || rotation == 270) && previewSizes.contains(outputResolution.transposed()))
-        outputResolution.transpose();
+    if (rotation == 90 || rotation == 270) {
+        videoOutputResolution.transpose();
+        if (previewSizes.contains(cameraOutputResolution.transposed()))
+            cameraOutputResolution.transpose();
+    }
 
-    if (currentViewfinderResolution != outputResolution
+    if (currentViewfinderResolution != cameraOutputResolution
+        || (m_videoOutput && currentVideoOutputResolution != videoOutputResolution)
         || currentPreviewFormat != adjustedPreviewFormat || currentFpsRange.min != adjustedFps.min
         || currentFpsRange.max != adjustedFps.max) {
-
         if (m_videoOutput) {
-            m_videoOutput->setVideoSize(outputResolution);
+            m_videoOutput->setVideoSize(videoOutputResolution);
         }
 
         // if preview is started, we have to stop it first before changing its size
         if (m_previewStarted && restartPreview)
             m_camera->stopPreview();
 
-        m_camera->setPreviewSize(outputResolution);
+        m_camera->setPreviewSize(cameraOutputResolution);
         m_camera->setPreviewFormat(adjustedPreviewFormat);
         m_camera->setPreviewFpsRange(adjustedFps);
 
@@ -653,12 +661,16 @@ void QAndroidCameraSession::onNewPreviewFrame(const QVideoFrame &frame)
     m_videoFrameCallbackMutex.unlock();
 }
 
-void QAndroidCameraSession::onCameraPictureCaptured(const QVideoFrame &frame)
+void QAndroidCameraSession::onCameraPictureCaptured(const QByteArray &bytes,
+                                QVideoFrameFormat::PixelFormat format, QSize size,int bytesPerLine)
 {
-    // Loading and saving the captured image can be slow, do it in a separate thread
-    (void)QtConcurrent::run(&QAndroidCameraSession::processCapturedImage, this,
-                            m_currentImageCaptureId, frame, m_imageCaptureToBuffer,
-                            m_currentImageCaptureFileName);
+    if (m_imageCaptureToBuffer) {
+        processCapturedImageToBuffer(m_currentImageCaptureId, bytes, format, size, bytesPerLine);
+    } else {
+        // Loading and saving the captured image can be slow, do it in a separate thread
+        (void)QtConcurrent::run(&QAndroidCameraSession::processCapturedImage, this,
+                         m_currentImageCaptureId, bytes, m_currentImageCaptureFileName);
+    }
 
     // Preview needs to be restarted after taking a picture
     if (m_camera)
@@ -696,35 +708,35 @@ void QAndroidCameraSession::onCameraPreviewStopped()
     setReadyForCapture(false);
 }
 
-void QAndroidCameraSession::processCapturedImage(int id, const QVideoFrame &frame,
-                                                 bool captureToBuffer, const QString &fileName)
+void QAndroidCameraSession::processCapturedImage(int id, const QByteArray &bytes, const QString &fileName)
 {
-    if (captureToBuffer) {
-        emit imageAvailable(id, frame);
-        return;
-    }
-
     const QString actualFileName = QMediaStorageLocation::generateFileName(
             fileName, QStandardPaths::PicturesLocation, QLatin1String("jpg"));
-    QImageWriter writer(actualFileName);
-
-    if (!writer.canWrite()) {
+    QFile writer(actualFileName);
+    if (!writer.open(QIODeviceBase::WriteOnly)) {
         const QString errorMessage = tr("File is not available: %1").arg(writer.errorString());
         emit imageCaptureError(id, QImageCapture::Error::ResourceError, errorMessage);
         return;
     }
 
-    const bool written = writer.write(frame.toImage());
-    if (!written) {
+    if (writer.write(bytes) < 0) {
         const QString errorMessage = tr("Could not save to file: %1").arg(writer.errorString());
         emit imageCaptureError(id, QImageCapture::Error::ResourceError, errorMessage);
         return;
     }
 
+    writer.close();
     if (fileName.isEmpty() || QFileInfo(fileName).isRelative())
         AndroidMultimediaUtils::registerMediaFile(actualFileName);
 
     emit imageSaved(id, actualFileName);
+}
+
+void QAndroidCameraSession::processCapturedImageToBuffer(int id, const QByteArray &bytes,
+                              QVideoFrameFormat::PixelFormat format, QSize size, int bytesPerLine)
+{
+    QVideoFrame frame(new QMemoryVideoBuffer(bytes, bytesPerLine), QVideoFrameFormat(size, format));
+    emit imageAvailable(id, frame);
 }
 
 void QAndroidCameraSession::onVideoOutputReady(bool ready)
@@ -765,8 +777,20 @@ void QAndroidCameraSession::setVideoSink(QVideoSink *sink)
     if (m_sink == sink)
         return;
 
+    if (m_sink)
+        disconnect(m_retryPreviewConnection);
+
     m_sink = sink;
 
+    if (m_sink)
+        m_retryPreviewConnection =
+                connect(m_sink->platformVideoSink(), &QPlatformVideoSink::rhiChanged, this, [&]()
+                        {
+                            if (m_active) {
+                                setActive(false);
+                                setActive(true);
+                            }
+                        }, Qt::DirectConnection);
     if (m_sink) {
         delete m_textureOutput;
         m_textureOutput = nullptr;
@@ -778,3 +802,5 @@ void QAndroidCameraSession::setVideoSink(QVideoSink *sink)
 }
 
 QT_END_NAMESPACE
+
+#include "moc_qandroidcamerasession_p.cpp"

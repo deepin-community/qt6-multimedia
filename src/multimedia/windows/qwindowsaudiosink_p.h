@@ -15,8 +15,6 @@
 #ifndef QWINDOWSAUDIOOUTPUT_H
 #define QWINDOWSAUDIOOUTPUT_H
 
-#include "qwindowsaudioutils_p.h"
-
 #include <QtCore/qdebug.h>
 #include <QtCore/qelapsedtimer.h>
 #include <QtCore/qiodevice.h>
@@ -25,27 +23,16 @@
 #include <QtCore/qdatetime.h>
 #include <QtCore/qmutex.h>
 #include <QtCore/qtimer.h>
+#include <QtCore/qpointer.h>
 
 #include <QtMultimedia/qaudio.h>
 #include <QtMultimedia/qaudiodevice.h>
 #include <private/qaudiosystem_p.h>
-#include <qwindowsiupointer_p.h>
+#include <qcomptr_p.h>
 #include <qwindowsresampler_p.h>
-
-#include <queue>
-#include <utility>
 
 #include <audioclient.h>
 #include <mmdeviceapi.h>
-
-// For compat with 4.6
-#if !defined(QT_WIN_CALLBACK)
-#  if defined(Q_CC_MINGW)
-#    define QT_WIN_CALLBACK CALLBACK __attribute__ ((force_align_arg_pointer))
-#  else
-#    define QT_WIN_CALLBACK CALLBACK
-#  endif
-#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -55,14 +42,14 @@ class QWindowsAudioSink : public QPlatformAudioSink
 {
     Q_OBJECT
 public:
-    QWindowsAudioSink(QWindowsIUPointer<IMMDevice> device, QObject *parent);
+    QWindowsAudioSink(ComPtr<IMMDevice> device, QObject *parent);
     ~QWindowsAudioSink();
 
     void setFormat(const QAudioFormat& fmt) override;
     QAudioFormat format() const override;
     QIODevice* start() override;
     void start(QIODevice* device) override;
-    void stop() override { close(); }
+    void stop() override;
     void reset() override;
     void suspend() override;
     void resume() override;
@@ -91,15 +78,16 @@ private:
     QAudioFormat m_format;
     QAudio::Error errorState = QAudio::NoError;
     QAudio::State deviceState = QAudio::StoppedState;
+    QAudio::State suspendedInState = QAudio::SuspendedState;
 
     qsizetype m_bufferSize = 0;
     qreal m_volume = 1.0;
     QTimer *m_timer = nullptr;
     QScopedPointer<QIODevice> m_pushSource;
-    QIODevice *m_pullSource = nullptr;
-    QWindowsIUPointer<IMMDevice> m_device;
-    QWindowsIUPointer<IAudioClient> m_audioClient;
-    QWindowsIUPointer<IAudioRenderClient> m_renderClient;
+    QPointer<QIODevice> m_pullSource;
+    ComPtr<IMMDevice> m_device;
+    ComPtr<IAudioClient> m_audioClient;
+    ComPtr<IAudioRenderClient> m_renderClient;
     QWindowsResampler m_resampler;
 };
 

@@ -7,9 +7,12 @@
 #include <QDialog>
 
 QT_BEGIN_NAMESPACE
+class QCameraFormat;
 class QComboBox;
 class QMediaRecorder;
-namespace Ui { class VideoSettingsUi; }
+namespace Ui {
+class VideoSettingsUi;
+}
 QT_END_NAMESPACE
 
 class VideoSettings : public QDialog
@@ -27,7 +30,8 @@ protected:
     void changeEvent(QEvent *e) override;
 
 private:
-    QVariant boxValue(const QComboBox*) const;
+    void setFpsRange(const QCameraFormat &format);
+    QVariant boxValue(const QComboBox *) const;
     void selectComboBoxItem(QComboBox *box, const QVariant &value);
 
     Ui::VideoSettingsUi *ui;

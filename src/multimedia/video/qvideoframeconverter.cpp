@@ -5,37 +5,26 @@
 #include "qvideoframeconversionhelper_p.h"
 #include "qvideoframeformat.h"
 
-#include <QtGui/private/qrhinull_p.h>
-#if QT_CONFIG(opengl)
-#include <QtGui/private/qrhigles2_p.h>
-#include <QOffscreenSurface>
-#endif
-#if QT_CONFIG(vulkan)
-#include <QtGui/private/qrhivulkan_p.h>
-#endif
-#ifdef Q_OS_WIN
-#include <QtGui/private/qrhid3d11_p.h>
-#endif
-#if defined(Q_OS_MACOS) || defined(Q_OS_IOS)
-#include <QtGui/private/qrhimetal_p.h>
-#endif
-
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qhash.h>
 #include <QtCore/qfile.h>
 #include <QtCore/qthreadstorage.h>
 #include <QtGui/qimage.h>
+#include <QtGui/qoffscreensurface.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qvideotexturehelper_p.h>
 #include <private/qabstractvideobuffer_p.h>
 #include <private/qguiapplication_p.h>
-#include <private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
+#ifdef Q_OS_DARWIN
+#include <QtCore/private/qcore_mac_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
-Q_LOGGING_CATEGORY(qLcVideoFrameConverter, "qt.multimedia.video.frameconverter")
+static Q_LOGGING_CATEGORY(qLcVideoFrameConverter, "qt.multimedia.video.frameconverter")
 
 namespace {
 
@@ -99,7 +88,7 @@ static bool pixelFormatHasAlpha(QVideoFrameFormat::PixelFormat format)
     }
 };
 
-static QShader getShader(const QString &name)
+static QShader vfcGetShader(const QString &name)
 {
     QShader shader = g_shaderCache.value(name);
     if (shader.isValid())
@@ -210,11 +199,11 @@ static bool updateTextures(QRhi *rhi,
     graphicsPipeline.reset(rhi->newGraphicsPipeline());
     graphicsPipeline->setTopology(QRhiGraphicsPipeline::TriangleStrip);
 
-    QShader vs = getShader(QVideoTextureHelper::vertexShaderFileName(format));
+    QShader vs = vfcGetShader(QVideoTextureHelper::vertexShaderFileName(format));
     if (!vs.isValid())
         return false;
 
-    QShader fs = getShader(QVideoTextureHelper::fragmentShaderFileName(format));
+    QShader fs = vfcGetShader(QVideoTextureHelper::fragmentShaderFileName(format));
     if (!fs.isValid())
         return false;
 

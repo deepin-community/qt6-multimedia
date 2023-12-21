@@ -12,8 +12,6 @@
 #include <SLES/OpenSLES_AndroidConfiguration.h>
 #endif // ANDROID
 
-#define BUFFER_COUNT 2
-
 QT_BEGIN_NAMESPACE
 
 static inline void openSlDebugInfo()
@@ -30,25 +28,7 @@ static inline void openSlDebugInfo()
 
 QAndroidAudioSink::QAndroidAudioSink(const QByteArray &device, QObject *parent)
     : QPlatformAudioSink(parent),
-      m_deviceName(device),
-      m_state(QAudio::StoppedState),
-      m_error(QAudio::NoError),
-      m_outputMixObject(nullptr),
-      m_playerObject(nullptr),
-      m_playItf(nullptr),
-      m_volumeItf(nullptr),
-      m_bufferQueueItf(nullptr),
-      m_audioSource(nullptr),
-      m_buffers(nullptr),
-      m_volume(1.0),
-      m_pullMode(false),
-      m_nextBuffer(0),
-      m_bufferSize(0),
-      m_elapsedTime(0),
-      m_processedBytes(0),
-      m_availableBuffers(BUFFER_COUNT),
-      m_eventMask(SL_PLAYEVENT_HEADATEND),
-      m_startRequiresInit(true)
+      m_deviceName(device)
 {
 #ifndef ANDROID
       m_streamType = -1;
@@ -82,16 +62,17 @@ void QAndroidAudioSink::start(QIODevice *device)
     if (!preparePlayer())
         return;
 
+    m_endSound = false;
     m_pullMode = true;
     m_audioSource = device;
     m_nextBuffer = 0;
     m_processedBytes = 0;
-    m_availableBuffers = BUFFER_COUNT;
+    m_availableBuffers = BufferCount;
     setState(QAudio::ActiveState);
     setError(QAudio::NoError);
 
     // Attempt to fill buffers first.
-    for (int i = 0; i != BUFFER_COUNT; ++i) {
+    for (int i = 0; i != BufferCount; ++i) {
         const int index = i * m_bufferSize;
         const qint64 readSize = m_audioSource->read(m_buffers + index, m_bufferSize);
         if (readSize && SL_RESULT_SUCCESS != (*m_bufferQueueItf)->Enqueue(m_bufferQueueItf,
@@ -110,6 +91,16 @@ void QAndroidAudioSink::start(QIODevice *device)
     // Change the state to playing.
     // We need to do this after filling the buffers or processedBytes might get corrupted.
     startPlayer();
+    connect(m_audioSource, &QIODevice::readyRead, this, &QAndroidAudioSink::readyRead);
+}
+
+void QAndroidAudioSink::readyRead()
+{
+    if (m_pullMode && m_state == QAudio::IdleState) {
+        setState(QAudio::ActiveState);
+        setError(QAudio::NoError);
+        QMetaObject::invokeMethod(this, "bufferAvailable", Qt::QueuedConnection);
+    }
 }
 
 QIODevice *QAndroidAudioSink::start()
@@ -122,7 +113,7 @@ QIODevice *QAndroidAudioSink::start()
 
     m_pullMode = false;
     m_processedBytes = 0;
-    m_availableBuffers = BUFFER_COUNT;
+    m_availableBuffers = BufferCount;
     m_audioSource = new SLIODevicePrivate(this);
     m_audioSource->open(QIODevice::WriteOnly | QIODevice::Unbuffered);
 
@@ -187,7 +178,7 @@ void QAndroidAudioSink::resume()
         return;
     }
 
-    setState(m_pullMode ? QAudio::ActiveState : QAudio::IdleState);
+    setState(m_suspendedInState);
     setError(QAudio::NoError);
 }
 
@@ -213,6 +204,7 @@ void QAndroidAudioSink::suspend()
         return;
     }
 
+    m_suspendedInState = m_state;
     setState(QAudio::SuspendedState);
     setError(QAudio::NoError);
 }
@@ -256,18 +248,15 @@ void QAndroidAudioSink::onBytesProcessed(qint64 bytes)
     m_processedBytes += bytes;
 }
 
-void QAndroidAudioSink::bufferAvailable(quint32 count, quint32 playIndex)
+void QAndroidAudioSink::bufferAvailable()
 {
-    Q_UNUSED(count);
-    Q_UNUSED(playIndex);
-
     if (m_state == QAudio::StoppedState)
         return;
 
     if (!m_pullMode) { // We're in push mode.
         // Signal that there is a new open slot in the buffer and return
         const int val = m_availableBuffers.fetchAndAddRelease(1) + 1;
-        if (val == BUFFER_COUNT)
+        if (val == BufferCount)
             QMetaObject::invokeMethod(this, "onEOSEvent", Qt::QueuedConnection);
 
         return;
@@ -275,7 +264,23 @@ void QAndroidAudioSink::bufferAvailable(quint32 count, quint32 playIndex)
 
     // We're in pull mode.
     const int index = m_nextBuffer * m_bufferSize;
-    const qint64 readSize = m_audioSource->read(m_buffers + index, m_bufferSize);
+    qint64 readSize = 0;
+    if (m_audioSource->atEnd()) {
+        // The whole sound was passed to player buffer, but setting SL_PLAYSTATE_STOPPED state
+        // too quickly will result in cutting of end of the sound. Therefore, we make it a little
+        // longer with empty data to make sure they will be played correctly
+        if (m_endSound) {
+            m_endSound = false;
+            setState(QAudio::IdleState);
+            return;
+        }
+        m_endSound = true;
+        readSize = m_bufferSize;
+        memset(m_buffers + index, 0, readSize);
+    } else {
+        readSize = m_audioSource->read(m_buffers + index, m_bufferSize);
+    }
+
 
     if (readSize < 1) {
         QMetaObject::invokeMethod(this, "onEOSEvent", Qt::QueuedConnection);
@@ -291,11 +296,8 @@ void QAndroidAudioSink::bufferAvailable(quint32 count, quint32 playIndex)
         return;
     }
 
-    m_nextBuffer = (m_nextBuffer + 1) % BUFFER_COUNT;
+    m_nextBuffer = (m_nextBuffer + 1) % BufferCount;
     QMetaObject::invokeMethod(this, "onBytesProcessed", Qt::QueuedConnection, Q_ARG(qint64, readSize));
-
-    if (m_audioSource->atEnd())
-        setState(QAudio::IdleState);
 }
 
 void QAndroidAudioSink::playCallback(SLPlayItf player, void *ctx, SLuint32 event)
@@ -308,10 +310,9 @@ void QAndroidAudioSink::playCallback(SLPlayItf player, void *ctx, SLuint32 event
 
 void QAndroidAudioSink::bufferQueueCallback(SLBufferQueueItf bufferQueue, void *ctx)
 {
-    SLBufferQueueState state;
-    (*bufferQueue)->GetState(bufferQueue, &state);
+    Q_UNUSED(bufferQueue);
     QAndroidAudioSink *audioOutput = reinterpret_cast<QAndroidAudioSink *>(ctx);
-    audioOutput->bufferAvailable(state.count, state.playIndex);
+    audioOutput->bufferAvailable();
 }
 
 bool QAndroidAudioSink::preparePlayer()
@@ -331,7 +332,7 @@ bool QAndroidAudioSink::preparePlayer()
         return false;
     }
 
-    SLDataLocator_BufferQueue bufferQueueLocator = { SL_DATALOCATOR_BUFFERQUEUE, BUFFER_COUNT };
+    SLDataLocator_BufferQueue bufferQueueLocator = { SL_DATALOCATOR_BUFFERQUEUE, BufferCount };
     SLAndroidDataFormat_PCM_EX pcmFormat = QOpenSLESEngine::audioFormatToSLFormatPCM(m_format);
 
     SLDataSource audioSrc = { &bufferQueueLocator, &pcmFormat };
@@ -463,7 +464,7 @@ bool QAndroidAudioSink::preparePlayer()
     }
 
     if (!m_buffers)
-        m_buffers = new char[BUFFER_COUNT * m_bufferSize];
+        m_buffers = new char[BufferCount * m_bufferSize];
 
     setError(QAudio::NoError);
     m_startRequiresInit = false;
@@ -496,7 +497,7 @@ void QAndroidAudioSink::destroyPlayer()
     m_buffers = nullptr;
     m_processedBytes = 0;
     m_nextBuffer = 0;
-    m_availableBuffers.storeRelease(BUFFER_COUNT);
+    m_availableBuffers.storeRelease(BufferCount);
     m_playItf = nullptr;
     m_volumeItf = nullptr;
     m_bufferQueueItf = nullptr;
@@ -507,10 +508,14 @@ void QAndroidAudioSink::stopPlayer()
 {
     setState(QAudio::StoppedState);
 
-    if (m_audioSource && !m_pullMode) {
-        m_audioSource->close();
-        delete m_audioSource;
-        m_audioSource = nullptr;
+    if (m_audioSource) {
+        if (m_pullMode) {
+            disconnect(m_audioSource, &QIODevice::readyRead, this, &QAndroidAudioSink::readyRead);
+        } else {
+            m_audioSource->close();
+            delete m_audioSource;
+            m_audioSource = nullptr;
+        }
     }
 
     // We need to change the state manually...
@@ -570,7 +575,7 @@ qint64 QAndroidAudioSink::writeData(const char *data, qint64 len)
     m_processedBytes += len;
     setState(QAudio::ActiveState);
     setError(QAudio::NoError);
-    m_nextBuffer = (m_nextBuffer + 1) % BUFFER_COUNT;
+    m_nextBuffer = (m_nextBuffer + 1) % BufferCount;
 
     return len;
 }

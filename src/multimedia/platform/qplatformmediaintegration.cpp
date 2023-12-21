@@ -3,7 +3,6 @@
 
 #include <qtmultimediaglobal_p.h>
 #include "qplatformmediaintegration_p.h"
-#include "qplatformmediadevices_p.h"
 #include <qatomic.h>
 #include <qmutex.h>
 #include <qplatformaudioinput_p.h>
@@ -13,23 +12,29 @@
 #include <qcameradevice.h>
 #include <qloggingcategory.h>
 
+#include "qplatformcapturablewindows_p.h"
 #include "QtCore/private/qfactoryloader_p.h"
+#include "private/qplatformmediaformatinfo_p.h"
 #include "qplatformmediaplugin_p.h"
 
 class QDummyIntegration : public QPlatformMediaIntegration
 {
 public:
-    QDummyIntegration() { qFatal("QtMultimedia is not currently supported on this platform or compiler."); }
-    QPlatformMediaFormatInfo *formatInfo() override { return nullptr; }
+    QDummyIntegration()
+    {
+        qCritical("QtMultimedia is not currently supported on this platform or compiler.");
+    }
 };
 
-Q_LOGGING_CATEGORY(qLcMediaPlugin, "qt.multimedia.plugin")
+static Q_LOGGING_CATEGORY(qLcMediaPlugin, "qt.multimedia.plugin")
 
 Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
                           (QPlatformMediaPlugin_iid,
                            QLatin1String("/multimedia")))
 
-static QStringList backends()
+static const auto FFmpegBackend = QStringLiteral("ffmpeg");
+
+static QStringList availableBackends()
 {
     QStringList list;
 
@@ -44,59 +49,74 @@ static QStringList backends()
     return list;
 }
 
+static QString defaultBackend(const QStringList &backends)
+{
+#ifdef QT_DEFAULT_MEDIA_BACKEND
+    auto backend = QString::fromUtf8(QT_DEFAULT_MEDIA_BACKEND);
+    if (backends.contains(backend))
+        return backend;
+#endif
+
+#if defined(Q_OS_DARWIN) || defined(Q_OS_LINUX) || defined(Q_OS_WINDOWS) || defined(Q_OS_ANDROID)
+    // Return ffmpeg backend by default.
+    // Platform backends for the OS list are optionally available but have limited support.
+    if (backends.contains(FFmpegBackend))
+        return FFmpegBackend;
+#else
+    // Return platform backend (non-ffmpeg) by default.
+    if (backends.size() > 1 && backends[0] == FFmpegBackend)
+        return backends[1];
+#endif
+
+    return backends[0];
+}
+
 QT_BEGIN_NAMESPACE
 
-namespace {
-struct Holder {
-    ~Holder()
-    {
-        QMutexLocker locker(&mutex);
-        instance = nullptr;
-    }
+struct QPlatformMediaIntegration::InstanceHolder
+{
+    // TODO: replace the mutex with std::once
     QBasicMutex mutex;
-    QPlatformMediaIntegration *instance = nullptr;
-    QPlatformMediaIntegration *nativeInstance = nullptr;
-} holder;
-
-}
+    std::unique_ptr<QPlatformMediaIntegration> instance;
+    Factory factory;
+} instanceHolder;
 
 QPlatformMediaIntegration *QPlatformMediaIntegration::instance()
 {
-    QMutexLocker locker(&holder.mutex);
-    if (holder.instance)
-        return holder.instance;
+    QMutexLocker locker(&instanceHolder.mutex);
+    if (instanceHolder.instance)
+        return instanceHolder.instance.get();
 
-    auto plugins = backends();
-
-    QString type = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND"));
-    if (type.isEmpty() && !plugins.isEmpty()) {
-        type = plugins.first();
-        // FIXME: prefer platform specific backend if available over ffmpeg until it becomes mature
-        if (type == QStringLiteral("ffmpeg") && plugins.size() > 1)
-            type = plugins[1];
+    if (instanceHolder.factory) {
+        instanceHolder.instance = instanceHolder.factory();
+        return instanceHolder.instance.get();
     }
 
-    qCDebug(qLcMediaPlugin) << "loading backend" << type;
-    holder.nativeInstance = qLoadPlugin<QPlatformMediaIntegration, QPlatformMediaPlugin>(loader(), type);
+    const auto backends = availableBackends();
+    QString backend = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND"));
+    if (backend.isEmpty() && !backends.isEmpty())
+        backend = defaultBackend(backends);
 
-    if (!holder.nativeInstance) {
-        qWarning() << "could not load multimedia backend" << type;
-        holder.nativeInstance = new QDummyIntegration;
+    qCDebug(qLcMediaPlugin) << "loading backend" << backend;
+    instanceHolder.instance.reset(
+            qLoadPlugin<QPlatformMediaIntegration, QPlatformMediaPlugin>(loader(), backend));
+
+    if (!instanceHolder.instance) {
+        qWarning() << "could not load multimedia backend" << backend;
+        instanceHolder.instance = std::make_unique<QDummyIntegration>();
     }
 
-    holder.instance = holder.nativeInstance;
-    return holder.instance;
+    return instanceHolder.instance.get();
 }
 
 /*
     This API is there to be able to test with a mock backend.
 */
-void QPlatformMediaIntegration::setIntegration(QPlatformMediaIntegration *integration)
+void QPlatformMediaIntegration::setPlatformFactory(Factory factory)
 {
-    if (integration)
-        holder.instance = integration;
-    else
-        holder.instance = holder.nativeInstance;
+    Q_ASSERT((factory == nullptr) ^ (instanceHolder.factory == nullptr));
+    instanceHolder.instance.reset();
+    instanceHolder.factory = std::move(factory);
 }
 
 QList<QCameraDevice> QPlatformMediaIntegration::videoInputs()
@@ -114,9 +134,32 @@ QMaybe<QPlatformAudioOutput *> QPlatformMediaIntegration::createAudioOutput(QAud
     return new QPlatformAudioOutput(q);
 }
 
-QPlatformMediaIntegration::~QPlatformMediaIntegration()
+QList<QCapturableWindow> QPlatformMediaIntegration::capturableWindows()
 {
-    delete m_videoDevices;
+    return m_capturableWindows ? m_capturableWindows->windows() : QList<QCapturableWindow>{};
 }
+
+bool QPlatformMediaIntegration::isCapturableWindowValid(const QCapturableWindowPrivate &window)
+{
+    return m_capturableWindows && m_capturableWindows->isWindowValid(window);
+}
+
+const QPlatformMediaFormatInfo *QPlatformMediaIntegration::formatInfo()
+{
+    std::call_once(m_formatInfoOnceFlg, [this]() {
+        m_formatInfo.reset(createFormatInfo());
+        Q_ASSERT(m_formatInfo);
+    });
+    return m_formatInfo.get();
+}
+
+QPlatformMediaFormatInfo *QPlatformMediaIntegration::createFormatInfo()
+{
+    return new QPlatformMediaFormatInfo;
+}
+
+QPlatformMediaIntegration::QPlatformMediaIntegration() = default;
+
+QPlatformMediaIntegration::~QPlatformMediaIntegration() = default;
 
 QT_END_NAMESPACE

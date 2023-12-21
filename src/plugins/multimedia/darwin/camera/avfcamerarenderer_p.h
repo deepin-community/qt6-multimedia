@@ -49,7 +49,7 @@ public:
     ~AVFCameraRenderer();
 
     void reconfigure() override;
-    void setOutputSettings(NSDictionary *settings) override;
+    void setOutputSettings() override;
 
     void configureAVCaptureSession(AVFCameraSession *cameraSession);
     void syncHandleViewfinderFrame(const QVideoFrame &frame);
@@ -59,7 +59,8 @@ public:
     AVFCaptureFramesDelegate *captureDelegate() const;
     void resetCaptureDelegate() const;
 
-    void setPixelFormat(const QVideoFrameFormat::PixelFormat format);
+    void setPixelFormat(QVideoFrameFormat::PixelFormat pixelFormat,
+                        QVideoFrameFormat::ColorRange colorRange);
 
 Q_SIGNALS:
     void newViewfinderFrame(const QVideoFrame &frame);

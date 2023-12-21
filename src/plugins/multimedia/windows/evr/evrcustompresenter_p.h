@@ -22,6 +22,8 @@
 #include <qrect.h>
 #include <qvideoframeformat.h>
 #include <qvideosink.h>
+#include <qpointer.h>
+#include <private/qcomptr_p.h>
 
 #include <d3d9.h>
 #include <dxva2api.h>
@@ -110,7 +112,7 @@ public:
     const LONGLONG &lastSampleTime() const { return m_lastSampleTime; }
     const LONGLONG &frameDuration() const { return m_perFrameInterval; }
 
-    HRESULT startScheduler(IMFClock *clock);
+    HRESULT startScheduler(ComPtr<IMFClock> clock);
     HRESULT stopScheduler();
 
     HRESULT scheduleSample(IMFSample *sample, bool presentNow);
@@ -128,9 +130,9 @@ private:
 
     EVRCustomPresenter *m_presenter;
 
-    QQueue<IMFSample*> m_scheduledSamples; // Samples waiting to be presented.
+    QQueue<ComPtr<IMFSample>> m_scheduledSamples; // Samples waiting to be presented.
 
-    IMFClock *m_clock; // Presentation clock. Can be NULL.
+    ComPtr<IMFClock> m_clock; // Presentation clock. Can be NULL.
 
     DWORD m_threadID;
     HANDLE m_schedulerThread;
@@ -152,7 +154,7 @@ public:
     SamplePool();
     ~SamplePool();
 
-    HRESULT initialize(QList<IMFSample*> &samples);
+    HRESULT initialize(QList<ComPtr<IMFSample>> &&samples);
     HRESULT clear();
 
     HRESULT getSample(IMFSample **sample);
@@ -160,7 +162,7 @@ public:
 
 private:
     QMutex m_mutex;
-    QList<IMFSample*> m_videoSampleQueue;
+    QList<ComPtr<IMFSample>> m_videoSampleQueue;
     bool m_initialized;
 };
 
@@ -314,7 +316,7 @@ private:
     struct FrameStep
     {
         FrameStepState state = FrameStepNone;
-        QList<IMFSample*> samples;
+        QList<ComPtr<IMFSample>> samples;
         DWORD steps = 0;
         DWORD_PTR sampleNoRef = 0;
     };
@@ -342,12 +344,12 @@ private:
 
     D3DPresentEngine *m_presentEngine; // Rendering engine. (Never null if the constructor succeeds.)
 
-    IMFClock *m_clock; // The EVR's clock.
-    IMFTransform *m_mixer; // The EVR's mixer.
-    IMediaEventSink *m_mediaEventSink; // The EVR's event-sink interface.
-    IMFMediaType *m_mediaType; // Output media type
+    ComPtr<IMFClock> m_clock; // The EVR's clock.
+    ComPtr<IMFTransform> m_mixer; // The EVR's mixer.
+    ComPtr<IMediaEventSink> m_mediaEventSink; // The EVR's event-sink interface.
+    ComPtr<IMFMediaType> m_mediaType; // Output media type
 
-    QVideoSink *m_videoSink;
+    QPointer<QVideoSink> m_videoSink;
     bool m_canRenderToSurface;
     qint64 m_positionOffset; // Seek position in microseconds.
     QRect m_cropRect;  // Video crop rectangle

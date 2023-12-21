@@ -9,6 +9,10 @@ ifneq ($(DEB_BUILD_ARCH),$(DEB_HOST_ARCH))
 	cmake_extra_args += -DQT_HOST_PATH=/usr
 endif
 
+ifneq (,$(filter $(DEB_HOST_ARCH),powerpc))
+	cmake_extra_args += -DCOMPILE_DEFINITIONS="EIGEN_DONT_VECTORIZE"
+endif
+
 %:
 	dh $@ --with pkgkde_symbolshelper --buildsystem=cmake+ninja
 

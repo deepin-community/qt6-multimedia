@@ -1,3 +1,5 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
 #.rst:
 # FindFFmpeg
 # ----------
@@ -172,6 +174,45 @@ set(FFMPEG_LIBRARIES "")
 set(FFMPEG_DEFINITIONS "")
 set(FFMPEG_LIBRARY_DIRS "")
 
+# Check for all possible component.
+find_component(AVCODEC    libavcodec    avcodec  libavcodec/avcodec.h)
+find_component(AVFORMAT   libavformat   avformat libavformat/avformat.h)
+find_component(AVDEVICE   libavdevice   avdevice libavdevice/avdevice.h)
+find_component(AVUTIL     libavutil     avutil   libavutil/avutil.h)
+find_component(AVFILTER   libavfilter   avfilter libavfilter/avfilter.h)
+find_component(SWSCALE    libswscale    swscale  libswscale/swscale.h)
+find_component(POSTPROC   libpostproc   postproc libpostproc/postprocess.h)
+find_component(SWRESAMPLE libswresample swresample libswresample/swresample.h)
+
+# Linking to private FFmpeg libraries is only needed if it was built statically
+# Only one of the components needs to be tested
+if(AVCODEC_LIBRARY AND ${AVCODEC_LIBRARY} MATCHES "\\${CMAKE_STATIC_LIBRARY_SUFFIX}$")
+  set(FFMPEG_IS_STATIC TRUE CACHE INTERNAL "")
+endif()
+
+if (FFMPEG_IS_STATIC AND (ANDROID OR LINUX))
+  set(ENABLE_DYNAMIC_RESOLVE_OPENSSL_SYMBOLS TRUE CACHE INTERNAL "")
+endif()
+
+set(ENABLE_DYNAMIC_RESOLVE_VAAPI_SYMBOLS ${LINUX} CACHE INTERNAL "")
+
+function(__try_add_dynamic_resolve_dependency dep added)
+  set(added TRUE PARENT_SCOPE)
+
+  if(ENABLE_DYNAMIC_RESOLVE_OPENSSL_SYMBOLS AND
+      (${dep} STREQUAL "ssl" OR ${dep} STREQUAL "crypto"))
+    set(DYNAMIC_RESOLVE_OPENSSL_SYMBOLS TRUE CACHE INTERNAL "")
+  elseif(ENABLE_DYNAMIC_RESOLVE_VAAPI_SYMBOLS AND ${dep} STREQUAL "va")
+    set(DYNAMIC_RESOLVE_VAAPI_SYMBOLS TRUE CACHE INTERNAL "")
+  elseif(ENABLE_DYNAMIC_RESOLVE_VAAPI_SYMBOLS AND ${dep} STREQUAL "va-drm")
+    set(DYNAMIC_RESOLVE_VA_DRM_SYMBOLS TRUE CACHE INTERNAL "")
+  elseif(ENABLE_DYNAMIC_RESOLVE_VAAPI_SYMBOLS AND ${dep} STREQUAL "va-x11")
+    set(DYNAMIC_RESOLVE_VA_X11_SYMBOLS TRUE CACHE INTERNAL "")
+  else()
+    set(added FALSE PARENT_SCOPE)
+  endif()
+endfunction()
+
 # Function parses package config file to find the static library dependencies
 # and adds them to the target library.
 function(__ffmpeg_internal_set_dependencies lib)
@@ -179,48 +220,38 @@ function(__ffmpeg_internal_set_dependencies lib)
   if(EXISTS ${PC_FILE})
     file(READ ${PC_FILE} pcfile)
 
+    set(prefix_l "(^| )\\-l")
+    set(suffix_lib "\\.lib($| )")
+
     string(REGEX REPLACE ".*Libs:([^\n\r]+).*" "\\1" out "${pcfile}")
-    string(REGEX MATCHALL "\\-l[^ ]+" libs_dependency ${out})
-    string(REGEX MATCHALL "[^ ]+\\.lib" libs_dependency_lib ${out})
+    string(REGEX MATCHALL "${prefix_l}[^ ]+" libs_dependency ${out})
+    string(REGEX MATCHALL "[^ ]+${suffix_lib}" libs_dependency_lib ${out})
 
     string(REGEX REPLACE ".*Libs.private:([^\n\r]+).*" "\\1" out "${pcfile}")
-    string(REGEX MATCHALL "\\-l[^ ]+" libs_private_dependency ${out})
-    string(REGEX MATCHALL "[^ ]+\\.lib" libs_private_dependency_lib ${out})
+    string(REGEX MATCHALL "${prefix_l}[^ ]+" libs_private_dependency ${out})
+    string(REGEX MATCHALL "[^ ]+${suffix_lib}" libs_private_dependency_lib ${out})
 
-    list(APPEND no_suffix ${libs_dependency} ${libs_private_dependency})
-    list(APPEND lib_suffix ${libs_dependency_lib} ${libs_private_dependency_lib})
-
-    foreach(d ${no_suffix})
-      string(REGEX REPLACE "\\-l" "" d ${d})
-      if(NOT ${lib} STREQUAL ${d})
-        target_link_libraries(FFmpeg::${lib} INTERFACE ${d})
+    list(APPEND deps_no_suffix ${libs_dependency} ${libs_private_dependency})
+    foreach(dependency ${deps_no_suffix})
+      string(REGEX REPLACE ${prefix_l} "" dependency ${dependency})
+      if(NOT ${lib} STREQUAL ${dependency})
+        __try_add_dynamic_resolve_dependency(${dependency} added)
+        if(NOT added)
+          target_link_libraries(FFmpeg::${lib} INTERFACE ${dependency})
+        endif()
       endif()
     endforeach()
-    foreach(d ${lib_suffix})
-      string(REGEX REPLACE "\\.lib" "" d ${d})
-      target_link_libraries(FFmpeg::${lib} INTERFACE ${d})
+
+    list(APPEND deps_lib_suffix ${libs_dependency_lib} ${libs_private_dependency_lib})
+    foreach(dependency ${deps_lib_suffix})
+      string(REGEX REPLACE ${suffix_lib} "" dependency ${dependency})
+      target_link_libraries(FFmpeg::${lib} INTERFACE ${dependency})
     endforeach()
   endif()
 endfunction()
 
 # Check for cached results. If there are skip the costly part.
 #if (NOT FFMPEG_LIBRARIES)
-
-  # Check for all possible component.
-  find_component(AVCODEC    libavcodec    avcodec  libavcodec/avcodec.h)
-  find_component(AVFORMAT   libavformat   avformat libavformat/avformat.h)
-  find_component(AVDEVICE   libavdevice   avdevice libavdevice/avdevice.h)
-  find_component(AVUTIL     libavutil     avutil   libavutil/avutil.h)
-  find_component(AVFILTER   libavfilter   avfilter libavfilter/avfilter.h)
-  find_component(SWSCALE    libswscale    swscale  libswscale/swscale.h)
-  find_component(POSTPROC   libpostproc   postproc libpostproc/postprocess.h)
-  find_component(SWRESAMPLE libswresample swresample libswresample/swresample.h)
-
-  # Linking to private FFmpeg libraries is only needed if it was built statically
-  # Only one of the components needs to be tested
-  if(AVCODEC_LIBRARY AND ${AVCODEC_LIBRARY} MATCHES "\\${CMAKE_STATIC_LIBRARY_SUFFIX}$")
-      set(__ffmpeg_is_static TRUE)
-  endif()
 
   # Check if the required components were found and add their stuff to the FFMPEG_* vars.
   foreach (_component ${FFmpeg_FIND_COMPONENTS})
@@ -243,7 +274,7 @@ endfunction()
             INTERFACE_LINK_LIBRARIES "${${_component}_LIBRARIES}"
             INTERFACE_LINK_DIRECTORIES "${${_component}_LIBRARY_DIRS}"
         )
-        if(__ffmpeg_is_static)
+        if(FFMPEG_IS_STATIC)
             __ffmpeg_internal_set_dependencies(${_lowerComponent})
         endif()
         target_link_libraries(FFmpeg::${_lowerComponent} INTERFACE "${${_component}_LIBRARY}")

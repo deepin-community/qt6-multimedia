@@ -1,3 +1,27 @@
+qt6-multimedia (6.6.1-1) experimental; urgency=medium
+
+  [ Patrick Franz ]
+  * New upstream release (6.6.1).
+  * Bump Qt B-Ds to 6.6.1.
+  * Remove patches that have been applied upstream.
+  * Update build-dependencies.
+  * Update list of installed files.
+  * Update symbols from buildlogs.
+  * Remove binary package libqt6multimediaquick6.
+  * Update d/copyright.
+  * Build with EIGEN_DONT_VECTORIZE on powerpc to fix FTBFS, thx to John
+    Paul Adrian Glaubitz (Closes: #1057050).
+
+ -- Patrick Franz <deltaone@debian.org>  Wed, 20 Dec 2023 20:05:06 +0100
+
+qt6-multimedia (6.4.2-11) unstable; urgency=medium
+
+  [ Patrick Franz ]
+  * Add patch to build with system eigen3, thx to Christian Marillat
+    (Closes: #1038988).
+
+ -- Patrick Franz <deltaone@debian.org>  Tue, 26 Sep 2023 21:23:07 +0200
+
 qt6-multimedia (6.4.2-10) unstable; urgency=medium
 
   [ Patrick Franz ]

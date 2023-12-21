@@ -7,6 +7,8 @@
 #include "ks.h"
 #include "ksmedia.h"
 
+#include <audioclient.h>
+
 QT_BEGIN_NAMESPACE
 
 static QAudioFormat::AudioChannelPosition channelFormatMap[] =
@@ -155,14 +157,14 @@ QAudioFormat QWindowsAudioUtils::mediaTypeToFormat(IMFMediaType *mediaType)
     return format;
 }
 
-QWindowsIUPointer<IMFMediaType> QWindowsAudioUtils::formatToMediaType(QWindowsMediaFoundation &wmf, const QAudioFormat &format)
+ComPtr<IMFMediaType> QWindowsAudioUtils::formatToMediaType(QWindowsMediaFoundation &wmf, const QAudioFormat &format)
 {
-    QWindowsIUPointer<IMFMediaType> mediaType;
+    ComPtr<IMFMediaType> mediaType;
 
     if (!format.isValid())
         return mediaType;
 
-    wmf.mfCreateMediaType(mediaType.address());
+    wmf.mfCreateMediaType(mediaType.GetAddressOf());
 
     mediaType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Audio);
     if (format.sampleFormat() == QAudioFormat::Float) {
@@ -183,6 +185,24 @@ QWindowsIUPointer<IMFMediaType> QWindowsAudioUtils::formatToMediaType(QWindowsMe
     mediaType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
 
     return mediaType;
+}
+
+std::optional<quint32> QWindowsAudioUtils::audioClientFramesInUse(IAudioClient *client)
+{
+    Q_ASSERT(client);
+    UINT32 framesPadding = 0;
+    if (SUCCEEDED(client->GetCurrentPadding(&framesPadding)))
+        return framesPadding;
+    return {};
+}
+
+std::optional<quint32> QWindowsAudioUtils::audioClientFramesAllocated(IAudioClient *client)
+{
+    Q_ASSERT(client);
+    UINT32 bufferFrameCount = 0;
+    if (SUCCEEDED(client->GetBufferSize(&bufferFrameCount)))
+        return bufferFrameCount;
+    return {};
 }
 
 QT_END_NAMESPACE

@@ -149,6 +149,7 @@ QList<QAudioDevice> QMediaDevices::audioOutputs()
 */
 QList<QCameraDevice> QMediaDevices::videoInputs()
 {
+    QPlatformMediaDevices::instance()->initVideoDevicesConnection();
     return QPlatformMediaIntegration::instance()->videoInputs();
 }
 
@@ -247,17 +248,27 @@ QCameraDevice QMediaDevices::defaultVideoInput()
 QMediaDevices::QMediaDevices(QObject *parent)
     : QObject(parent)
 {
-    QPlatformMediaDevices::instance()->addMediaDevices(this);
+    auto platformDevices = QPlatformMediaDevices::instance();
+    connect(platformDevices, &QPlatformMediaDevices::videoInputsChanged, this,
+            &QMediaDevices::videoInputsChanged);
+    connect(platformDevices, &QPlatformMediaDevices::audioInputsChanged, this,
+            &QMediaDevices::audioInputsChanged);
+    connect(platformDevices, &QPlatformMediaDevices::audioOutputsChanged, this,
+            &QMediaDevices::audioOutputsChanged);
 }
 
 /*!
     \internal
 */
-QMediaDevices::~QMediaDevices()
-{
-    QPlatformMediaDevices::instance()->removeMediaDevices(this);
-}
+QMediaDevices::~QMediaDevices() = default;
 
+void QMediaDevices::connectNotify(const QMetaMethod &signal)
+{
+    if (signal == QMetaMethod::fromSignal(&QMediaDevices::videoInputsChanged))
+        QPlatformMediaDevices::instance()->initVideoDevicesConnection();
+
+    QObject::connectNotify(signal);
+}
 
 QT_END_NAMESPACE
 

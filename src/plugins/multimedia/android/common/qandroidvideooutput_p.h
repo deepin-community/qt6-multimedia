@@ -20,8 +20,8 @@
 #include <qreadwritelock.h>
 #include <private/qabstractvideobuffer_p.h>
 #include <qmatrix4x4.h>
-#include <QtGui/private/qrhi_p.h>
-#include <QtGui/qoffscreensurface.h>
+#include <qoffscreensurface.h>
+#include <rhi/qrhi.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -44,6 +44,7 @@ public:
     virtual void start() { }
     virtual void stop() { }
     virtual void reset() { }
+    virtual QSize getVideoSize() const { return QSize(0, 0); }
 
 Q_SIGNALS:
     void readyChanged(bool);
@@ -60,12 +61,14 @@ public:
     ~QAndroidTextureVideoOutput() override;
 
     QVideoSink *surface() const { return m_sink; }
+    bool shouldTextureBeUpdated() const;
 
     AndroidSurfaceTexture *surfaceTexture() override;
 
     void setVideoSize(const QSize &) override;
     void stop() override;
     void reset() override;
+    QSize getVideoSize() const override { return m_nativeSize; }
 
     void setSubtitle(const QString &subtitle);
 private Q_SLOTS:
@@ -74,6 +77,7 @@ private Q_SLOTS:
 private:
     QVideoSink *m_sink = nullptr;
     QSize m_nativeSize;
+    bool m_surfaceCreatedWithoutRhi = false;
 
     std::unique_ptr<class AndroidTextureThread> m_surfaceThread;
 };

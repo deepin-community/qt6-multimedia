@@ -16,14 +16,20 @@
 
 #include <private/qtmultimediaglobal_p.h>
 #include <private/qmultimediautils_p.h>
+#include <qcapturablewindow.h>
 #include <qmediarecorder.h>
 #include <qstring.h>
+
+#include <memory>
+#include <mutex>
 
 QT_BEGIN_NAMESPACE
 
 class QMediaPlayer;
 class QAudioDecoder;
 class QCamera;
+class QScreenCapture;
+class QWindowCapture;
 class QMediaRecorder;
 class QImageCapture;
 class QMediaDevices;
@@ -32,6 +38,7 @@ class QPlatformMediaCaptureSession;
 class QPlatformMediaPlayer;
 class QPlatformAudioDecoder;
 class QPlatformCamera;
+class QPlatformSurfaceCapture;
 class QPlatformMediaRecorder;
 class QPlatformImageCapture;
 class QPlatformMediaFormatInfo;
@@ -43,6 +50,8 @@ class QAudioOutput;
 class QPlatformAudioInput;
 class QPlatformAudioOutput;
 class QPlatformVideoDevices;
+class QCapturableWindow;
+class QPlatformCapturableWindows;
 
 class Q_MULTIMEDIA_EXPORT QPlatformMediaIntegration
 {
@@ -50,14 +59,14 @@ class Q_MULTIMEDIA_EXPORT QPlatformMediaIntegration
 public:
     static QPlatformMediaIntegration *instance();
 
-    // API to be able to test with a mock backend
-    static void setIntegration(QPlatformMediaIntegration *);
-
+    QPlatformMediaIntegration();
     virtual ~QPlatformMediaIntegration();
-    virtual QPlatformMediaFormatInfo *formatInfo() = 0;
+    const QPlatformMediaFormatInfo *formatInfo();
 
     virtual QList<QCameraDevice> videoInputs();
     virtual QMaybe<QPlatformCamera *> createCamera(QCamera *) { return notAvailable; }
+    virtual QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) { return nullptr; }
+    virtual QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) { return nullptr; }
 
     virtual QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *) { return notAvailable; }
     virtual QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() { return notAvailable; }
@@ -70,8 +79,27 @@ public:
 
     virtual QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) { return notAvailable; }
 
+    QList<QCapturableWindow> capturableWindows();
+    bool isCapturableWindowValid(const QCapturableWindowPrivate &);
+
+    QPlatformVideoDevices *videoDevices() { return m_videoDevices.get(); }
+
 protected:
-    QPlatformVideoDevices *m_videoDevices = nullptr;
+    virtual QPlatformMediaFormatInfo *createFormatInfo();
+
+private:
+    friend class QMockIntegrationFactory;
+    // API to be able to test with a mock backend
+    using Factory = std::function<std::unique_ptr<QPlatformMediaIntegration>()>;
+    struct InstanceHolder;
+    static void setPlatformFactory(Factory factory);
+
+protected:
+    std::unique_ptr<QPlatformVideoDevices> m_videoDevices;
+    std::unique_ptr<QPlatformCapturableWindows> m_capturableWindows;
+
+    mutable std::unique_ptr<QPlatformMediaFormatInfo> m_formatInfo;
+    mutable std::once_flag m_formatInfoOnceFlg;
 };
 
 QT_END_NAMESPACE

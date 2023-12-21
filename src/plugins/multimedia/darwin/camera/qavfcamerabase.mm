@@ -92,22 +92,6 @@ bool qt_convert_exposure_mode(AVCaptureDevice *captureDevice, QCamera::ExposureM
 
 #endif // defined(Q_OS_IOS)
 
-bool isFlashAvailable(AVCaptureDevice* captureDevice) {
-    if (@available(macOS 10.15, *)) {
-        return [captureDevice isFlashAvailable];
-    }
-
-    return true;
-}
-
-bool isTorchAvailable(AVCaptureDevice* captureDevice) {
-    if (@available(macOS 10.15, *)) {
-        return [captureDevice isTorchAvailable];
-    }
-
-    return true;
-}
-
 } // Unnamed namespace.
 
 
@@ -157,12 +141,14 @@ void QAVFVideoDevices::updateCameraDevices()
     NSArray *videoDevices = [AVCaptureDevice devicesWithMediaType:AVMediaTypeVideo];
 
     for (AVCaptureDevice *device in videoDevices) {
-
-        QCameraDevicePrivate *info = new QCameraDevicePrivate;
+        auto info = std::make_unique<QCameraDevicePrivate>();
         if (defaultDevice && [defaultDevice.uniqueID isEqualToString:device.uniqueID])
             info->isDefault = true;
         info->id = QByteArray([[device uniqueID] UTF8String]);
         info->description = QString::fromNSString([device localizedName]);
+
+        qCDebug(qLcCamera) << "Handling camera info" << info->description
+                           << (info->isDefault ? "(default)" : "");
 
         QSet<QSize> photoResolutions;
         QList<QCameraFormat> videoFormats;
@@ -180,9 +166,13 @@ void QAVFVideoDevices::updateCameraDevices()
 
             auto encoding = CMVideoFormatDescriptionGetCodecType(format.formatDescription);
             auto pixelFormat = QAVFHelpers::fromCVPixelFormat(encoding);
+            auto colorRange = QAVFHelpers::colorRangeForCVPixelFormat(encoding);
             // Ignore pixel formats we can't handle
-            if (pixelFormat == QVideoFrameFormat::Format_Invalid)
+            if (pixelFormat == QVideoFrameFormat::Format_Invalid) {
+                qCDebug(qLcCamera) << "ignore camera CV format" << encoding
+                                   << "as no matching video format found";
                 continue;
+            }
 
             for (AVFrameRateRange *frameRateRange in format.videoSupportedFrameRateRanges) {
                 if (frameRateRange.minFrameRate < minFrameRate)
@@ -202,29 +192,30 @@ void QAVFVideoDevices::updateCameraDevices()
                 photoResolutions.insert(hrRes);
 #endif
 
-            auto *f = new QCameraFormatPrivate{
-                QSharedData(),
-                pixelFormat,
-                resolution,
-                minFrameRate,
-                maxFrameRate
-            };
+            qCDebug(qLcCamera) << "Add camera format. pixelFormat:" << pixelFormat
+                               << "colorRange:" << colorRange << "cvPixelFormat" << encoding
+                               << "resolution:" << resolution << "frameRate: [" << minFrameRate
+                               << maxFrameRate << "]";
+
+            auto *f = new QCameraFormatPrivate{ QSharedData(), pixelFormat,  resolution,
+                                                minFrameRate,  maxFrameRate, colorRange };
             videoFormats << f->create();
         }
         if (videoFormats.isEmpty()) {
             // skip broken cameras without valid formats
-            delete info;
+            qCWarning(qLcCamera())
+                    << "Skip camera" << info->description << "without supported formats";
             continue;
         }
         info->videoFormats = videoFormats;
         info->photoResolutions = photoResolutions.values();
 
-        cameras.append(info->create());
+        cameras.append(info.release()->create());
     }
 
     if (cameras != m_cameraDevices) {
         m_cameraDevices = cameras;
-        videoInputsChanged();
+        emit videoInputsChanged();
     }
 }
 
@@ -649,7 +640,7 @@ bool QAVFCameraBase::isFlashReady() const
     // AVCaptureDevice's docs:
     // "The flash may become unavailable if, for example,
     //  the device overheats and needs to cool off."
-    return isFlashAvailable(captureDevice);
+    return [captureDevice isFlashAvailable];
 }
 
 void QAVFCameraBase::setTorchMode(QCamera::TorchMode mode)
@@ -756,7 +747,7 @@ void QAVFCameraBase::applyFlashSettings()
         if (mode == QCamera::FlashOff) {
             setAvFlashModeSafe(AVCaptureFlashModeOff);
         } else {
-            if (isFlashAvailable(captureDevice)) {
+            if ([captureDevice isFlashAvailable]) {
                 if (mode == QCamera::FlashOn)
                     setAvFlashModeSafe(AVCaptureFlashModeOn);
                 else if (mode == QCamera::FlashAuto)
@@ -780,7 +771,7 @@ void QAVFCameraBase::applyFlashSettings()
         if (mode == QCamera::TorchOff) {
             setAvTorchModeSafe(AVCaptureTorchModeOff);
         } else {
-            if (isTorchAvailable(captureDevice)) {
+            if ([captureDevice isTorchAvailable]) {
                 if (mode == QCamera::TorchOn)
                     setAvTorchModeSafe(AVCaptureTorchModeOn);
                 else if (mode == QCamera::TorchAuto)

@@ -15,12 +15,12 @@
 // We mean it.
 //
 
-#include "QUrl.h"
+#include "qurl.h"
 #include "private/qplatformmediaplayer_p.h"
 
 #include <QtCore/qcoreevent.h>
 
-QT_USE_NAMESPACE
+QT_BEGIN_NAMESPACE
 
 class MFPlayerSession;
 
@@ -97,5 +97,7 @@ private:
     QUrl m_media;
     MFPlayerSession *m_session;
 };
+
+QT_END_NAMESPACE
 
 #endif

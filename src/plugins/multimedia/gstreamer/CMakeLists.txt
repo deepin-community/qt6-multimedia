@@ -1,3 +1,6 @@
+# Copyright (C) 2022 The Qt Company Ltd.
+# SPDX-License-Identifier: BSD-3-Clause
+
 qt_find_package(EGL)
 
 qt_internal_add_plugin(QGstreamerMediaPlugin
@@ -31,6 +34,10 @@ qt_internal_add_plugin(QGstreamerMediaPlugin
         mediacapture/qgstreamerimagecapture.cpp mediacapture/qgstreamerimagecapture_p.h
         mediacapture/qgstreamermediacapture.cpp mediacapture/qgstreamermediacapture_p.h
         mediacapture/qgstreamermediaencoder.cpp mediacapture/qgstreamermediaencoder_p.h
+    NO_UNITY_BUILD_SOURCES
+        # Conflicts with macros defined in X11.h, and Xlib.h
+        common/qgstvideobuffer.cpp
+        common/qgstreamervideosink.cpp
     DEFINES
         GLIB_VERSION_MIN_REQUIRED=GLIB_VERSION_2_26
     INCLUDE_DIRECTORIES

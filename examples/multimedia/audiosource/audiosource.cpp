@@ -3,21 +3,24 @@
 
 #include "audiosource.h"
 
-#include <stdlib.h>
-#include <math.h>
-
-#include <QDateTime>
-#include <QDebug>
-#include <QPainter>
-#include <QVBoxLayout>
 #include <QAudioDevice>
 #include <QAudioSource>
-#include <qendian.h>
+#include <QDateTime>
+#include <QDebug>
+#include <QLabel>
+#include <QPainter>
+#include <QVBoxLayout>
+#include <QtEndian>
 
-AudioInfo::AudioInfo(const QAudioFormat &format)
-    : m_format(format)
-{
-}
+#if QT_CONFIG(permissions)
+  #include <QCoreApplication>
+  #include <QPermission>
+#endif
+
+#include <math.h>
+#include <stdlib.h>
+
+AudioInfo::AudioInfo(const QAudioFormat &format) : m_format(format) { }
 
 void AudioInfo::start()
 {
@@ -63,8 +66,7 @@ qint64 AudioInfo::writeData(const char *data, qint64 len)
     return len;
 }
 
-RenderArea::RenderArea(QWidget *parent)
-    : QWidget(parent)
+RenderArea::RenderArea(QWidget *parent) : QWidget(parent)
 {
     setBackgroundRole(QPalette::Base);
     setAutoFillBackground(true);
@@ -85,8 +87,7 @@ void RenderArea::paintEvent(QPaintEvent * /* event */)
         return;
 
     const int pos = qRound(qreal(frame.width() - 1) * m_level);
-    painter.fillRect(frame.left() + 1, frame.top() + 1,
-                     pos, frame.height() - 1, Qt::red);
+    painter.fillRect(frame.left() + 1, frame.top() + 1, pos, frame.height() - 1, Qt::red);
 }
 
 void RenderArea::setLevel(qreal value)
@@ -95,12 +96,9 @@ void RenderArea::setLevel(qreal value)
     update();
 }
 
-
-InputTest::InputTest()
-    : m_devices(new QMediaDevices(this))
+InputTest::InputTest() : m_devices(new QMediaDevices(this))
 {
-    initializeWindow();
-    initializeAudio(QMediaDevices::defaultAudioInput());
+    init();
 }
 
 void InputTest::initializeWindow()
@@ -113,7 +111,7 @@ void InputTest::initializeWindow()
     m_deviceBox = new QComboBox(this);
     const QAudioDevice &defaultDeviceInfo = QMediaDevices::defaultAudioInput();
     m_deviceBox->addItem(defaultDeviceInfo.description(), QVariant::fromValue(defaultDeviceInfo));
-    for (auto &deviceInfo: m_devices->audioInputs()) {
+    for (auto &deviceInfo : m_devices->audioInputs()) {
         if (deviceInfo != defaultDeviceInfo)
             m_deviceBox->addItem(deviceInfo.description(), QVariant::fromValue(deviceInfo));
     }
@@ -144,16 +142,43 @@ void InputTest::initializeAudio(const QAudioDevice &deviceInfo)
     format.setSampleFormat(QAudioFormat::Int16);
 
     m_audioInfo.reset(new AudioInfo(format));
-    connect(m_audioInfo.data(), &AudioInfo::levelChanged,
-            m_canvas, &RenderArea::setLevel);
+    connect(m_audioInfo.data(), &AudioInfo::levelChanged, m_canvas, &RenderArea::setLevel);
 
     m_audioInput.reset(new QAudioSource(deviceInfo, format));
-    qreal initialVolume = QAudio::convertVolume(m_audioInput->volume(),
-                                                QAudio::LinearVolumeScale,
+    qreal initialVolume = QAudio::convertVolume(m_audioInput->volume(), QAudio::LinearVolumeScale,
                                                 QAudio::LogarithmicVolumeScale);
     m_volumeSlider->setValue(qRound(initialVolume * 100));
     m_audioInfo->start();
     toggleMode();
+}
+
+void InputTest::initializeErrorWindow()
+{
+    QVBoxLayout *layout = new QVBoxLayout(this);
+    QLabel *errorLabel = new QLabel(tr("Microphone permission is not granted!"));
+    errorLabel->setWordWrap(true);
+    errorLabel->setAlignment(Qt::AlignCenter);
+    layout->addWidget(errorLabel);
+}
+
+void InputTest::init()
+{
+#if QT_CONFIG(permissions)
+    QMicrophonePermission microphonePermission;
+    switch (qApp->checkPermission(microphonePermission)) {
+    case Qt::PermissionStatus::Undetermined:
+        qApp->requestPermission(microphonePermission, this, &InputTest::init);
+        return;
+    case Qt::PermissionStatus::Denied:
+        qWarning("Microphone permission is not granted!");
+        initializeErrorWindow();
+        return;
+    case Qt::PermissionStatus::Granted:
+        break;
+    }
+#endif
+    initializeWindow();
+    initializeAudio(QMediaDevices::defaultAudioInput());
 }
 
 void InputTest::toggleMode()
@@ -171,18 +196,17 @@ void InputTest::toggleMode()
         if (!io)
             return;
 
-        connect(io, &QIODevice::readyRead,
-            [this, io]() {
-                static const qint64 BufferSize = 4096;
-                const qint64 len = qMin(m_audioInput->bytesAvailable(), BufferSize);
+        connect(io, &QIODevice::readyRead, [this, io]() {
+            static const qint64 BufferSize = 4096;
+            const qint64 len = qMin(m_audioInput->bytesAvailable(), BufferSize);
 
-                QByteArray buffer(len, 0);
-                qint64 l = io->read(buffer.data(), len);
-                if (l > 0) {
-                    const qreal level = m_audioInfo->calculateLevel(buffer.constData(), l);
-                    m_canvas->setLevel(level);
-                }
-            });
+            QByteArray buffer(len, 0);
+            qint64 l = io->read(buffer.data(), len);
+            if (l > 0) {
+                const qreal level = m_audioInfo->calculateLevel(buffer.constData(), l);
+                m_canvas->setLevel(level);
+            }
+        });
     }
 
     m_pullMode = !m_pullMode;
@@ -218,9 +242,10 @@ void InputTest::deviceChanged(int index)
 
 void InputTest::sliderChanged(int value)
 {
-    qreal linearVolume = QAudio::convertVolume(value / qreal(100),
-                                               QAudio::LogarithmicVolumeScale,
+    qreal linearVolume = QAudio::convertVolume(value / qreal(100), QAudio::LogarithmicVolumeScale,
                                                QAudio::LinearVolumeScale);
 
     m_audioInput->setVolume(linearVolume);
 }
+
+#include "moc_audiosource.cpp"

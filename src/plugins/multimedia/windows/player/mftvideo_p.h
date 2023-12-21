@@ -1,8 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#ifndef MFTRANSFORM_H
-#define MFTRANSFORM_H
+#ifndef MFTVIDEO_H
+#define MFTVIDEO_H
 
 //
 //  W A R N I N G
@@ -21,13 +21,12 @@
 #include <QtCore/qmutex.h>
 #include <QtMultimedia/qvideoframeformat.h>
 
-QT_USE_NAMESPACE
+
+QT_BEGIN_NAMESPACE
 
 class MFVideoProbeControl;
 
-QT_BEGIN_NAMESPACE
 class QVideoFrame;
-QT_END_NAMESPACE
 
 class MFTransform: public IMFTransform
 {
@@ -91,5 +90,7 @@ private:
     QVideoFrameFormat m_format;
     int m_bytesPerLine;
 };
+
+QT_END_NAMESPACE
 
 #endif

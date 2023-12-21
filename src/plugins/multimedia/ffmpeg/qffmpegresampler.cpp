@@ -1,7 +1,7 @@
 // Copyright (C) 2022 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 #include "qffmpegresampler_p.h"
-#include "qffmpegdecoder_p.h"
+#include "playbackengine/qffmpegcodec_p.h"
 #include "qffmpegmediaformatinfo_p.h"
 #include <qloggingcategory.h>
 
@@ -9,7 +9,7 @@ extern "C" {
 #include <libavutil/opt.h>
 }
 
-Q_LOGGING_CATEGORY(qLcResampler, "qt.multimedia.ffmpeg.resampler")
+static Q_LOGGING_CATEGORY(qLcResampler, "qt.multimedia.ffmpeg.resampler")
 
 QT_BEGIN_NAMESPACE
 
@@ -33,6 +33,7 @@ Resampler::Resampler(const Codec *codec, const QAudioFormat &outputFormat)
 
 
     qCDebug(qLcResampler) << "init resampler" << m_outputFormat.sampleRate() << config << codecpar->sample_rate;
+    SwrContext *resampler = nullptr;
 #if QT_FFMPEG_OLD_CHANNEL_LAYOUT
     auto inConfig = codecpar->channel_layout;
     if (inConfig == 0)
@@ -60,36 +61,67 @@ Resampler::Resampler(const Codec *codec, const QAudioFormat &outputFormat)
                         0,
                         nullptr);
 #endif
-    // if we're not the master clock, we might need to handle clock adjustments, initialize for that
-    av_opt_set_double(resampler, "async", m_outputFormat.sampleRate()/50, 0);
-
     swr_init(resampler);
+    m_resampler.reset(resampler);
 }
 
-Resampler::~Resampler()
-{
-    swr_free(&resampler);
-}
+Resampler::~Resampler() = default;
 
 QAudioBuffer Resampler::resample(const AVFrame *frame)
 {
-    const int outSamples = swr_get_out_samples(resampler, frame->nb_samples);
-    QByteArray samples(m_outputFormat.bytesForFrames(outSamples), Qt::Uninitialized);
+    const int maxOutSamples = adjustMaxOutSamples(frame);
+
+    QByteArray samples(m_outputFormat.bytesForFrames(maxOutSamples), Qt::Uninitialized);
     auto **in = const_cast<const uint8_t **>(frame->extended_data);
     auto *out = reinterpret_cast<uint8_t *>(samples.data());
-    const int out_samples = swr_convert(resampler, &out, outSamples,
-                                  in, frame->nb_samples);
-    samples.resize(m_outputFormat.bytesForFrames(out_samples));
+    const int outSamples =
+            swr_convert(m_resampler.get(), &out, maxOutSamples, in, frame->nb_samples);
+
+    samples.resize(m_outputFormat.bytesForFrames(outSamples));
 
     qint64 startTime = m_outputFormat.durationForFrames(m_samplesProcessed);
-    m_samplesProcessed += out_samples;
+    m_samplesProcessed += outSamples;
 
-    qCDebug(qLcResampler) << "    new frame" << startTime << "in_samples" << frame->nb_samples << out_samples << outSamples;
-    QAudioBuffer buffer(samples, m_outputFormat, startTime);
-    return buffer;
+    qCDebug(qLcResampler) << "    new frame" << startTime << "in_samples" << frame->nb_samples
+                          << outSamples << maxOutSamples;
+    return QAudioBuffer(samples, m_outputFormat, startTime);
 }
 
+int Resampler::adjustMaxOutSamples(const AVFrame *frame)
+{
+    int maxOutSamples = swr_get_out_samples(m_resampler.get(), frame->nb_samples);
 
+    const auto remainingCompensationDistance = m_endCompensationSample - m_samplesProcessed;
+
+    if (remainingCompensationDistance > 0 && maxOutSamples > remainingCompensationDistance) {
+        // If the remaining compensation distance less than output frame,
+        // the ffmpeg resampler bufferises the rest of frames that makes
+        // unexpected delays on large frames.
+        // The hack might cause some compensation bias on large frames,
+        // however it's not significant for our logic, in fact.
+        // TODO: probably, it will need some improvements
+        setSampleCompensation(0, 0);
+        maxOutSamples = swr_get_out_samples(m_resampler.get(), frame->nb_samples);
+    }
+
+    return maxOutSamples;
+}
+
+void Resampler::setSampleCompensation(qint32 delta, quint32 distance)
+{
+    const int res = swr_set_compensation(m_resampler.get(), delta, static_cast<int>(distance));
+    if (res < 0)
+        qCWarning(qLcResampler) << "swr_set_compensation fail:" << res;
+    else {
+        m_sampleCompensationDelta = delta;
+        m_endCompensationSample = m_samplesProcessed + distance;
+    }
+}
+
+qint32 Resampler::activeSampleCompensationDelta() const
+{
+    return m_samplesProcessed < m_endCompensationSample ? m_sampleCompensationDelta : 0;
+}
 }
 
 QT_END_NAMESPACE

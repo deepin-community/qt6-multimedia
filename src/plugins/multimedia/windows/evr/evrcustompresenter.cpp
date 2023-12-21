@@ -9,7 +9,7 @@
 #include <private/qplatformvideosink_p.h>
 #include <private/qwindowsmfdefs_p.h>
 
-#include <QtGui/private/qrhi_p.h>
+#include <rhi/qrhi.h>
 
 #include <QtCore/qmutex.h>
 #include <QtCore/qvarlengtharray.h>
@@ -61,29 +61,19 @@ bool qt_evr_setCustomPresenter(IUnknown *evr, EVRCustomPresenter *presenter)
 class PresentSampleEvent : public QEvent
 {
 public:
-    PresentSampleEvent(IMFSample *sample)
-        : QEvent(QEvent::Type(EVRCustomPresenter::PresentSample))
-        , m_sample(sample)
+    explicit PresentSampleEvent(IMFSample *sample)
+        : QEvent(static_cast<Type>(EVRCustomPresenter::PresentSample)), m_sample(sample)
     {
-        if (m_sample)
-            m_sample->AddRef();
     }
 
-    ~PresentSampleEvent() override
-    {
-        if (m_sample)
-            m_sample->Release();
-    }
-
-    IMFSample *sample() const { return m_sample; }
+    IMFSample *sample() const { return m_sample.Get(); }
 
 private:
-    IMFSample *m_sample;
+    const ComPtr<IMFSample> m_sample;
 };
 
 Scheduler::Scheduler(EVRCustomPresenter *presenter)
     : m_presenter(presenter)
-    , m_clock(NULL)
     , m_threadID(0)
     , m_schedulerThread(0)
     , m_threadReadyEvent(0)
@@ -97,9 +87,6 @@ Scheduler::Scheduler(EVRCustomPresenter *presenter)
 
 Scheduler::~Scheduler()
 {
-    qt_evr_safe_release(&m_clock);
-    for (int i = 0; i < m_scheduledSamples.size(); ++i)
-        m_scheduledSamples[i]->Release();
     m_scheduledSamples.clear();
 }
 
@@ -116,7 +103,7 @@ void Scheduler::setFrameRate(const MFRatio& fps)
     m_perFrame_1_4th = m_perFrameInterval / 4;
 }
 
-HRESULT Scheduler::startScheduler(IMFClock *clock)
+HRESULT Scheduler::startScheduler(ComPtr<IMFClock> clock)
 {
     if (m_schedulerThread)
         return E_UNEXPECTED;
@@ -126,11 +113,7 @@ HRESULT Scheduler::startScheduler(IMFClock *clock)
     HANDLE hObjects[2];
     DWORD dwWait = 0;
 
-    if (m_clock)
-        m_clock->Release();
     m_clock = clock;
-    if (m_clock)
-        m_clock->AddRef();
 
     // Set a high the timer resolution (ie, short timer period).
     timeBeginPeriod(1);
@@ -200,8 +183,6 @@ HRESULT Scheduler::stopScheduler()
 
     // Discard samples.
     m_mutex.lock();
-    for (int i = 0; i < m_scheduledSamples.size(); ++i)
-        m_scheduledSamples[i]->Release();
     m_scheduledSamples.clear();
     m_mutex.unlock();
 
@@ -250,7 +231,6 @@ HRESULT Scheduler::scheduleSample(IMFSample *sample, bool presentNow)
     } else {
         // Queue the sample and ask the scheduler thread to wake up.
         m_mutex.lock();
-        sample->AddRef();
         m_scheduledSamples.enqueue(sample);
         m_mutex.unlock();
 
@@ -265,20 +245,18 @@ HRESULT Scheduler::processSamplesInQueue(LONG *nextSleep)
 {
     HRESULT hr = S_OK;
     LONG wait = 0;
-    IMFSample *sample = NULL;
 
     // Process samples until the queue is empty or until the wait time > 0.
     while (!m_scheduledSamples.isEmpty()) {
         m_mutex.lock();
-        sample = m_scheduledSamples.dequeue();
+        ComPtr<IMFSample> sample = m_scheduledSamples.dequeue();
         m_mutex.unlock();
 
         // Process the next sample in the queue. If the sample is not ready
         // for presentation. the value returned in wait is > 0, which
         // means the scheduler should sleep for that amount of time.
 
-        hr = processSample(sample, &wait);
-        qt_evr_safe_release(&sample);
+        hr = processSample(sample.Get(), &wait);
 
         if (FAILED(hr) || wait > 0)
             break;
@@ -346,7 +324,6 @@ HRESULT Scheduler::processSample(IMFSample *sample, LONG *pNextSleep)
     } else {
         // The sample is not ready yet. Return it to the queue.
         m_mutex.lock();
-        sample->AddRef();
         m_scheduledSamples.prepend(sample);
         m_mutex.unlock();
     }
@@ -399,8 +376,6 @@ DWORD Scheduler::schedulerThreadProcPrivate()
             case Flush:
                 // Flushing: Clear the sample queue and set the event.
                 m_mutex.lock();
-                for (int i = 0; i < m_scheduledSamples.size(); ++i)
-                    m_scheduledSamples[i]->Release();
                 m_scheduledSamples.clear();
                 m_mutex.unlock();
                 wait = INFINITE;
@@ -450,13 +425,10 @@ HRESULT SamplePool::getSample(IMFSample **sample)
     // but when we get it back, we want to re-insert it onto the opposite end.
     // (see ReturnSample)
 
-    IMFSample *taken = m_videoSampleQueue.takeFirst();
+    ComPtr<IMFSample> taken = m_videoSampleQueue.takeFirst();
 
     // Give the sample to the caller.
-    *sample = taken;
-    (*sample)->AddRef();
-
-    taken->Release();
+    *sample = taken.Detach();
 
     return S_OK;
 }
@@ -469,12 +441,11 @@ HRESULT SamplePool::returnSample(IMFSample *sample)
         return MF_E_NOT_INITIALIZED;
 
     m_videoSampleQueue.append(sample);
-    sample->AddRef();
 
     return S_OK;
 }
 
-HRESULT SamplePool::initialize(QList<IMFSample*> &samples)
+HRESULT SamplePool::initialize(QList<ComPtr<IMFSample>> &&samples)
 {
     QMutexLocker locker(&m_mutex);
 
@@ -482,16 +453,10 @@ HRESULT SamplePool::initialize(QList<IMFSample*> &samples)
         return MF_E_INVALIDREQUEST;
 
     // Move these samples into our allocated queue.
-    for (auto sample : std::as_const(samples)) {
-        sample->AddRef();
-        m_videoSampleQueue.append(sample);
-    }
+    m_videoSampleQueue.append(std::move(samples));
 
     m_initialized = true;
 
-    for (auto sample : std::as_const(samples))
-        sample->Release();
-    samples.clear();
     return S_OK;
 }
 
@@ -499,8 +464,6 @@ HRESULT SamplePool::clear()
 {
     QMutexLocker locker(&m_mutex);
 
-    for (auto sample : std::as_const(m_videoSampleQueue))
-        sample->Release();
     m_videoSampleQueue.clear();
     m_initialized = false;
 
@@ -521,9 +484,6 @@ EVRCustomPresenter::EVRCustomPresenter(QVideoSink *sink)
     , m_endStreaming(false)
     , m_playbackRate(1.0f)
     , m_presentEngine(new D3DPresentEngine(sink))
-    , m_clock(0)
-    , m_mixer(0)
-    , m_mediaEventSink(0)
     , m_mediaType(0)
     , m_videoSink(0)
     , m_canRenderToSurface(false)
@@ -543,11 +503,6 @@ EVRCustomPresenter::~EVRCustomPresenter()
     m_scheduler.flush();
     m_scheduler.stopScheduler();
     m_samplePool.clear();
-
-    qt_evr_safe_release(&m_clock);
-    qt_evr_safe_release(&m_mixer);
-    qt_evr_safe_release(&m_mediaEventSink);
-    qt_evr_safe_release(&m_mediaType);
 
     delete m_presentEngine;
 }
@@ -635,9 +590,9 @@ HRESULT EVRCustomPresenter::InitServicePointers(IMFTopologyServiceLookup *lookup
     if (isActive())
         return MF_E_INVALIDREQUEST;
 
-    qt_evr_safe_release(&m_clock);
-    qt_evr_safe_release(&m_mixer);
-    qt_evr_safe_release(&m_mediaEventSink);
+    m_clock.Reset();
+    m_mixer.Reset();
+    m_mediaEventSink.Reset();
 
     // Ask for the clock. Optional, because the EVR might not have a clock.
     objectCount = 1;
@@ -659,7 +614,7 @@ HRESULT EVRCustomPresenter::InitServicePointers(IMFTopologyServiceLookup *lookup
         return hr;
 
     // Make sure that we can work with this mixer.
-    hr = configureMixer(m_mixer);
+    hr = configureMixer(m_mixer.Get());
     if (FAILED(hr))
         return hr;
 
@@ -693,9 +648,9 @@ HRESULT EVRCustomPresenter::ReleaseServicePointers()
     setMediaType(NULL);
 
     // Release all services that were acquired from InitServicePointers.
-    qt_evr_safe_release(&m_clock);
-    qt_evr_safe_release(&m_mixer);
-    qt_evr_safe_release(&m_mediaEventSink);
+    m_clock.Reset();
+    m_mixer.Reset();
+    m_mediaEventSink.Reset();
 
     return S_OK;
 }
@@ -896,8 +851,6 @@ HRESULT EVRCustomPresenter::OnClockSetRate(MFTIME, float rate)
     // frame-step operation.
     if ((m_playbackRate == 0.0f) && (rate != 0.0f)) {
         cancelFrameStep();
-        for (auto sample : std::as_const(m_frameStep.samples))
-            sample->Release();
         m_frameStep.samples.clear();
     }
 
@@ -1100,13 +1053,11 @@ HRESULT EVRCustomPresenter::flush()
     m_scheduler.flush();
 
     // Flush the frame-step queue.
-    for (auto sample : std::as_const(m_frameStep.samples))
-        sample->Release();
     m_frameStep.samples.clear();
 
     if (m_renderState == RenderStopped && m_videoSink) {
         // Repaint with black.
-        presentSample(NULL);
+        presentSample(nullptr);
     }
 
     return S_OK;
@@ -1194,9 +1145,6 @@ HRESULT EVRCustomPresenter::prepareFrameStep(DWORD steps)
 
 HRESULT EVRCustomPresenter::startFrameStep()
 {
-    HRESULT hr = S_OK;
-    IMFSample *sample = NULL;
-
     if (m_frameStep.state == FrameStepWaitingStart) {
         // We have a frame-step request, and are waiting for the clock to start.
         // Set the state to "pending," which means we are waiting for samples.
@@ -1204,13 +1152,11 @@ HRESULT EVRCustomPresenter::startFrameStep()
 
         // If the frame-step queue already has samples, process them now.
         while (!m_frameStep.samples.isEmpty() && (m_frameStep.state == FrameStepPending)) {
-            sample = m_frameStep.samples.takeFirst();
+            const ComPtr<IMFSample> sample = m_frameStep.samples.takeFirst();
 
-            hr = deliverFrameStepSample(sample);
+            const HRESULT hr = deliverFrameStepSample(sample.Get());
             if (FAILED(hr))
-                goto done;
-
-            qt_evr_safe_release(&sample);
+                return hr;
 
             // We break from this loop when:
             //   (a) the frame-step queue is empty, or
@@ -1220,19 +1166,15 @@ HRESULT EVRCustomPresenter::startFrameStep()
         // We are not frame stepping. Therefore, if the frame-step queue has samples,
         // we need to process them normally.
         while (!m_frameStep.samples.isEmpty()) {
-            sample = m_frameStep.samples.takeFirst();
+            const ComPtr<IMFSample> sample = m_frameStep.samples.takeFirst();
 
-            hr = deliverSample(sample, false);
+            const HRESULT hr = deliverSample(sample.Get(), false);
             if (FAILED(hr))
-                goto done;
-
-            qt_evr_safe_release(&sample);
+                return hr;
         }
     }
 
-done:
-    qt_evr_safe_release(&sample);
-    return hr;
+    return S_OK;
 }
 
 HRESULT EVRCustomPresenter::completeFrameStep(IMFSample *sample)
@@ -1326,7 +1268,7 @@ HRESULT EVRCustomPresenter::createOptimalVideoType(IMFMediaType *proposedType, I
         m_sourceRect.bottom = float(m_cropRect.y() + m_cropRect.height()) / height;
 
         if (m_mixer)
-            configureMixer(m_mixer);
+            configureMixer(m_mixer.Get());
     } else {
         rcOutput.left = 0;
         rcOutput.top = 0;
@@ -1377,13 +1319,13 @@ HRESULT EVRCustomPresenter::setMediaType(IMFMediaType *mediaType)
     // Clearing the media type is allowed in any state (including shutdown).
     if (!mediaType) {
         stopSurface();
-        qt_evr_safe_release(&m_mediaType);
+        m_mediaType.Reset();
         releaseResources();
         return S_OK;
     }
 
     MFRatio fps = { 0, 0 };
-    QList<IMFSample*> sampleQueue;
+    QList<ComPtr<IMFSample>> sampleQueue;
 
     // Cannot set the media type after shutdown.
     HRESULT hr = checkShutdown();
@@ -1392,11 +1334,11 @@ HRESULT EVRCustomPresenter::setMediaType(IMFMediaType *mediaType)
 
     // Check if the new type is actually different.
     // Note: This function safely handles NULL input parameters.
-    if (qt_evr_areMediaTypesEqual(m_mediaType, mediaType))
+    if (qt_evr_areMediaTypesEqual(m_mediaType.Get(), mediaType))
         goto done; // Nothing more to do.
 
     // We're really changing the type. First get rid of the old type.
-    qt_evr_safe_release(&m_mediaType);
+    m_mediaType.Reset();
     releaseResources();
 
     // Initialize the presenter engine with the new media type.
@@ -1415,7 +1357,7 @@ HRESULT EVRCustomPresenter::setMediaType(IMFMediaType *mediaType)
     }
 
     // Add the samples to the sample pool.
-    hr = m_samplePool.initialize(sampleQueue);
+    hr = m_samplePool.initialize(std::move(sampleQueue));
     if (FAILED(hr))
         goto done;
 
@@ -1672,13 +1614,12 @@ HRESULT EVRCustomPresenter::deliverFrameStepSample(IMFSample *sample)
     IUnknown *unk = NULL;
 
     // For rate 0, discard any sample that ends earlier than the clock time.
-    if (isScrubbing() && m_clock && qt_evr_isSampleTimePassed(m_clock, sample)) {
+    if (isScrubbing() && m_clock && qt_evr_isSampleTimePassed(m_clock.Get(), sample)) {
         // Discard this sample.
     } else if (m_frameStep.state >= FrameStepScheduled) {
         // A frame was already submitted. Put this sample on the frame-step queue,
         // in case we are asked to step to the next frame. If frame-stepping is
         // cancelled, this sample will be processed normally.
-        sample->AddRef();
         m_frameStep.samples.append(sample);
     } else {
         // We're ready to frame-step.
@@ -1693,7 +1634,6 @@ HRESULT EVRCustomPresenter::deliverFrameStepSample(IMFSample *sample)
             // This is the right frame, but the clock hasn't started yet. Put the
             // sample on the frame-step queue. When the clock starts, the sample
             // will be processed.
-            sample->AddRef();
             m_frameStep.samples.append(sample);
         } else {
             // This is the right frame *and* the clock has started. Deliver this sample.
@@ -1831,7 +1771,7 @@ float EVRCustomPresenter::getMaxRate(bool thin)
     UINT monitorRateHz = 0;
 
     if (!thin && m_mediaType) {
-        qt_evr_getFrameRate(m_mediaType, &fps);
+        qt_evr_getFrameRate(m_mediaType.Get(), &fps);
         monitorRateHz = m_presentEngine->refreshRate();
 
         if (fps.Denominator && fps.Numerator && monitorRateHz) {
@@ -1898,9 +1838,9 @@ void EVRCustomPresenter::presentSample(IMFSample *sample)
             frame.setEndTime(frame.endTime() + m_positionOffset);
     }
 
-    QWindowsIUPointer<IMFMediaType> inputStreamType;
-    if (SUCCEEDED(m_mixer->GetInputCurrentType(0, inputStreamType.address()))) {
-        auto rotation = static_cast<MFVideoRotationFormat>(MFGetAttributeUINT32(inputStreamType.get(), MF_MT_VIDEO_ROTATION, 0));
+    ComPtr<IMFMediaType> inputStreamType;
+    if (SUCCEEDED(m_mixer->GetInputCurrentType(0, inputStreamType.GetAddressOf()))) {
+        auto rotation = static_cast<MFVideoRotationFormat>(MFGetAttributeUINT32(inputStreamType.Get(), MF_MT_VIDEO_ROTATION, 0));
         switch (rotation) {
         case MFVideoRotationFormat_0: frame.setRotationAngle(QVideoFrame::Rotation0); break;
         case MFVideoRotationFormat_90: frame.setRotationAngle(QVideoFrame::Rotation90); break;

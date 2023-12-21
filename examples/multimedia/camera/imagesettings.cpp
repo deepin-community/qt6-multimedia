@@ -4,34 +4,39 @@
 #include "imagesettings.h"
 #include "ui_imagesettings.h"
 
-#include <QComboBox>
-#include <QDebug>
-#include <QImageCapture>
 #include <QCamera>
+#include <QImageCapture>
 #include <QMediaCaptureSession>
 
-ImageSettings::ImageSettings(QImageCapture *imageCapture, QWidget *parent) :
-    QDialog(parent),
-    ui(new Ui::ImageSettingsUi),
-    imagecapture(imageCapture)
+#include <QComboBox>
+
+#include <QDebug>
+
+using namespace Qt::StringLiterals;
+
+ImageSettings::ImageSettings(QImageCapture *imageCapture, QWidget *parent)
+    : QDialog(parent), ui(new Ui::ImageSettingsUi), imagecapture(imageCapture)
 {
     ui->setupUi(this);
 
-    //image codecs
+    // image codecs
     ui->imageCodecBox->addItem(tr("Default image format"), QVariant(QString()));
     const auto supportedImageFormats = QImageCapture::supportedFormats();
     for (const auto &f : supportedImageFormats) {
         QString description = QImageCapture::fileFormatDescription(f);
-        ui->imageCodecBox->addItem(QImageCapture::fileFormatName(f) + ": " + description, QVariant::fromValue(f));
+        ui->imageCodecBox->addItem(QImageCapture::fileFormatName(f) + ": " + description,
+                                   QVariant::fromValue(f));
     }
 
     ui->imageQualitySlider->setRange(0, int(QImageCapture::VeryHighQuality));
 
     ui->imageResolutionBox->addItem(tr("Default Resolution"));
-    const QList<QSize> supportedResolutions = imagecapture->captureSession()->camera()->cameraDevice().photoResolutions();
+    const QList<QSize> supportedResolutions =
+            imagecapture->captureSession()->camera()->cameraDevice().photoResolutions();
     for (const QSize &resolution : supportedResolutions) {
-        ui->imageResolutionBox->addItem(QString("%1x%2").arg(resolution.width()).arg(resolution.height()),
-                                        QVariant(resolution));
+        ui->imageResolutionBox->addItem(
+                u"%1x%2"_s.arg(resolution.width()).arg(resolution.height()),
+                QVariant(resolution));
     }
 
     selectComboBoxItem(ui->imageCodecBox, QVariant::fromValue(imagecapture->fileFormat()));
@@ -65,19 +70,15 @@ void ImageSettings::applyImageSettings() const
 
 QVariant ImageSettings::boxValue(const QComboBox *box) const
 {
-    int idx = box->currentIndex();
-    if (idx == -1)
-        return QVariant();
-
-    return box->itemData(idx);
+    const int idx = box->currentIndex();
+    return idx != -1 ? box->itemData(idx) : QVariant{};
 }
 
 void ImageSettings::selectComboBoxItem(QComboBox *box, const QVariant &value)
 {
-    for (int i = 0; i < box->count(); ++i) {
-        if (box->itemData(i) == value) {
-            box->setCurrentIndex(i);
-            break;
-        }
-    }
+    const int idx = box->findData(value);
+    if (idx != -1)
+        box->setCurrentIndex(idx);
 }
+
+#include "moc_imagesettings.cpp"

@@ -16,7 +16,7 @@
 #include <qobject.h>
 #include <qmediadevices.h>
 
-#include "qmockintegration_p.h"
+#include "qmockintegration.h"
 #include "qmockmediacapturesession.h"
 #include "qmockcamera.h"
 
@@ -74,11 +74,15 @@ private slots:
     void testSignalFlashReady();
 
 private:
-    QMockIntegration integration;
+    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 void tst_QCamera::initTestCase()
 {
+#ifdef Q_OS_MACOS
+    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+        QSKIP("Flakiness on macOS CI, to be investigated, QTBUG-111812");
+#endif
 }
 
 void tst_QCamera::init()
@@ -600,7 +604,7 @@ void tst_QCamera::testErrorSignal()
     QMediaCaptureSession session;
     QCamera camera;
     session.setCamera(&camera);
-    auto *service = integration.lastCaptureService();
+    auto *service = QMockIntegration::instance()->lastCaptureService();
     Q_ASSERT(service);
     Q_ASSERT(service->mockCameraControl);
 
@@ -637,7 +641,7 @@ void tst_QCamera::testError()
     QMediaCaptureSession session;
     QCamera camera;
     session.setCamera(&camera);
-    auto *service = integration.lastCaptureService();
+    auto *service = QMockIntegration::instance()->lastCaptureService();
 
     /* Set the QPlatformCamera error and verify if it is set correctly in QCamera */
     service->mockCameraControl->setError(QCamera::CameraError,QString("Camera Error"));
@@ -659,7 +663,7 @@ void tst_QCamera::testErrorString()
     QMediaCaptureSession session;
     QCamera camera;
     session.setCamera(&camera);
-    auto *service = integration.lastCaptureService();
+    auto *service = QMockIntegration::instance()->lastCaptureService();
 
     /* Set the QPlatformCamera error and verify if it is set correctly in QCamera */
     service->mockCameraControl->setError(QCamera::CameraError,QString("Camera Error"));
@@ -748,7 +752,7 @@ void tst_QCamera::testMaxZoomChangedSignal()
     QMediaCaptureSession session;
     QCamera camera;
     session.setCamera(&camera);
-    QMockCamera *mock = integration.lastCamera();
+    QMockCamera *mock = QMockIntegration::instance()->lastCamera();
 
     // ### change max zoom factor on backend, e.g. by changing camera
     QSignalSpy spy(&camera, SIGNAL(maximumZoomFactorChanged(float)));
