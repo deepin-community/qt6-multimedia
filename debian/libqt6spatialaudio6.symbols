@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.6.1 amd64
+# SymbolsHelper-Confirmed: 6.6.1 amd64 armel armhf riscv64
 libQt6SpatialAudio.so.6 libqt6spatialaudio6 #MINVER#
 * Build-Depends-Package: qt6-multimedia-dev
  Qt_6@Qt_6 6.6.1
@@ -158,34 +158,28 @@ libQt6SpatialAudio.so.6 libqt6spatialaudio6 #MINVER#
  _ZNK14QAudioListener6engineEv@Qt_6 6.6.1
  _ZNK14QAudioListener8positionEv@Qt_6 6.6.1
  _ZNK14QAudioListener8rotationEv@Qt_6 6.6.1
- (optional=templinst|arch=armel)_ZNSt10_HashtableINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt4pairIKS5_St6vectorIhSaIhEEESaISB_ENSt8__detail10_Select1stESt8equal_toIS5_ESt4hashIS5_ENSD_18_Mod_range_hashingENSD_20_Default_ranged_hashENSD_20_Prime_rehash_policyENSD_17_Hashtable_traitsILb1ELb0ELb1EEEEC1IPKSB_EET_SS_jRKSI_RKSG_RKSC_St17integral_constantIbLb1EE@Base 6.4.0
- (optional=templinst|arch=armel)_ZNSt10_HashtableINSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEESt4pairIKS5_St6vectorIhSaIhEEESaISB_ENSt8__detail10_Select1stESt8equal_toIS5_ESt4hashIS5_ENSD_18_Mod_range_hashingENSD_20_Default_ranged_hashENSD_20_Prime_rehash_policyENSD_17_Hashtable_traitsILb1ELb0ELb1EEEEC2IPKSB_EET_SS_jRKSI_RKSG_RKSC_St17integral_constantIbLb1EE@Base 6.4.0
- (optional=templinst|arch=armel)_ZNSt6vectorISt8functionIFvvEESaIS2_EE17_M_realloc_insertIJS2_EEEvN9__gnu_cxx17__normal_iteratorIPS2_S4_EEDpOT_@Base 6.4.0
- (optional=templinst|subst|arch=armel)_ZNSt6vectorIfSaIfEE17_M_default_appendE{size_t}@Base 6.4.0
- (optional=templinst|subst|arch=armel)_ZNSt6vectorIsSaIsEE17_M_default_appendE{size_t}@Base 6.4.0
- (optional=templinst|arch=armel)_ZSt16__do_uninit_copyIPKSt4pairIiNSt7__cxx1112basic_stringIcSt11char_traitsIcESaIcEEEEPS7_ET0_T_SC_SB_@Base 6.4.0
  _ZSt19piecewise_construct@Qt_6 6.6.1
  _ZTI10QAudioRoom@Qt_6 6.6.1
  _ZTI12QAudioEngine@Qt_6 6.6.1
  _ZTI13QAmbientSound@Qt_6 6.6.1
  _ZTI13QSpatialSound@Qt_6 6.6.1
  _ZTI14QAudioListener@Qt_6 6.6.1
- (arch=armel)_ZTIN9__gnu_cxx7__mutexE@Base 6.4.0
- (arch=armel)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 6.4.0
- _ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
- (arch=armel)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 6.4.0
- _ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
- (arch=armel)_ZTISt19_Sp_make_shared_tag@Base 6.4.0
+ (arch=armel riscv64)_ZTIN9__gnu_cxx7__mutexE@Qt_6 6.6.1
+ (arch=armel riscv64)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.6.1
+ (arch=amd64 armhf)_ZTISt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
+ (arch=armel riscv64)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.6.1
+ (arch=amd64 armhf)_ZTISt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
+ (arch=armel armhf)_ZTISt19_Sp_make_shared_tag@Qt_6 6.6.1
  _ZTS10QAudioRoom@Qt_6 6.6.1
  _ZTS12QAudioEngine@Qt_6 6.6.1
  _ZTS13QAmbientSound@Qt_6 6.6.1
  _ZTS13QSpatialSound@Qt_6 6.6.1
  _ZTS14QAudioListener@Qt_6 6.6.1
- (arch=armel)_ZTSN9__gnu_cxx7__mutexE@Base 6.4.0
- (arch=armel)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 6.4.0
- _ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
- (arch=armel)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Base 6.4.0
- _ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
+ (arch=armel riscv64)_ZTSN9__gnu_cxx7__mutexE@Qt_6 6.6.1
+ (arch=armel riscv64)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.6.1
+ (arch=amd64 armhf)_ZTSSt11_Mutex_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
+ (arch=armel riscv64)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE1EE@Qt_6 6.6.1
+ (arch=amd64 armhf)_ZTSSt16_Sp_counted_baseILN9__gnu_cxx12_Lock_policyE2EE@Qt_6 6.6.1
  _ZTSSt19_Sp_make_shared_tag@Qt_6 6.6.1
  _ZTV10QAudioRoom@Qt_6 6.6.1
  _ZTV12QAudioEngine@Qt_6 6.6.1

@@ -1,4 +1,4 @@
-# SymbolsHelper-Confirmed: 6.6.1 amd64
+# SymbolsHelper-Confirmed: 6.6.1 amd64 armel armhf hppa i386 sh4
 libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
 * Build-Depends-Package: qt6-multimedia-dev
  Qt_6@Qt_6 6.6.1
@@ -6,9 +6,9 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _Z10qAlphaMaskN17QVideoFrameFormat11PixelFormatE@Qt_6 6.6.1
  _Z15qRealToFractiond@Qt_6 6.6.1
  _Z19qCalculateFrameSize5QSize8Fraction@Qt_6_PRIVATE_API 6.6.1
- _Z19qCopyPixelsWithMaskPjPKjmj@Qt_6 6.6.1
+ (subst)_Z19qCopyPixelsWithMaskPjPKj{size_t}j@Qt_6 6.6.1
  _Z20qImageFromVideoFrameRK11QVideoFrameNS_13RotationAngleEbb@Qt_6 6.6.1
- _Z24qCopyPixelsWithAlphaMaskPjPKjmN17QVideoFrameFormat11PixelFormatEb@Qt_6 6.6.1
+ (subst)_Z24qCopyPixelsWithAlphaMaskPjPKj{size_t}N17QVideoFrameFormat11PixelFormatEb@Qt_6 6.6.1
  _ZGVN25QPlatformMediaIntegration12notAvailableE@Qt_6_PRIVATE_API 6.6.1
  _ZGVZN9QMetaType21registerConverterImplI5QListI12QAudioDeviceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.6.1
  _ZGVZN9QMetaType21registerConverterImplI5QListI13QCameraDeviceE9QIterableI13QMetaSequenceEEEbSt8functionIFbPKvPvEES_S_E10unregister@Qt_6 6.6.1
@@ -32,7 +32,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN10QAudioSink11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.6.1
  _ZN10QAudioSink11qt_metacastEPKc@Qt_6 6.6.1
  _ZN10QAudioSink12stateChangedEN6QAudio5StateE@Qt_6 6.6.1
- _ZN10QAudioSink13setBufferSizeEx@Qt_6 6.6.1
+ (subst)_ZN10QAudioSink13setBufferSizeE{qptrdiff}@Qt_6 6.6.1
  _ZN10QAudioSink16staticMetaObjectE@Qt_6 6.6.1
  _ZN10QAudioSink4stopEv@Qt_6 6.6.1
  _ZN10QAudioSink5resetEv@Qt_6 6.6.1
@@ -143,7 +143,7 @@ libQt6Multimedia.so.6 libqt6multimedia6 #MINVER#
  _ZN12QAudioSource11qt_metacallEN11QMetaObject4CallEiPPv@Qt_6 6.6.1
  _ZN12QAudioSource11qt_metacastEPKc@Qt_6 6.6.1
  _ZN12QAudioSource12stateChangedEN6QAudio5StateE@Qt_6 6.6.1
- _ZN12QAudioSource13setBufferSizeEx@Qt_6 6.6.1
+ (subst)_ZN12QAudioSource13setBufferSizeE{qptrdiff}@Qt_6 6.6.1
  _ZN12QAudioSource16staticMetaObjectE@Qt_6 6.6.1
  _ZN12QAudioSource4stopEv@Qt_6 6.6.1
  _ZN12QAudioSource5resetEv@Qt_6 6.6.1
