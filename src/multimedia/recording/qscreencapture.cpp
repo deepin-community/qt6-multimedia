@@ -35,10 +35,14 @@ public:
     in a video preview object or recorded to a file.
 
     \snippet multimedia-snippets/media.cpp Media recorder
+
+    \include qscreencapture-limitations.qdocinc {content} {Q}
+
+    \sa QWindowCapture, QMediaCaptureSession
 */
 /*!
     \qmltype ScreenCapture
-    \instantiates QScreenCapture
+    \nativetype QScreenCapture
     \brief This type is used for capturing a screen.
 
     \inqmlmodule QtMultimedia
@@ -66,7 +70,9 @@ public:
     }
 \endqml
 
-    \sa ScreenCapture, CaptureSession
+    \include qscreencapture-limitations.qdocinc {content} {}
+
+    \sa WindowCapture, CaptureSession
 */
 
 QScreenCapture::QScreenCapture(QObject *parent)
@@ -183,7 +189,7 @@ QScreen *QScreenCapture::screen() const
 }
 
 /*!
-    \qmlproperty string QtMultimedia::ScreenCapture::error
+    \qmlproperty enumeration QtMultimedia::ScreenCapture::error
     Returns a code of the last error.
 */
 

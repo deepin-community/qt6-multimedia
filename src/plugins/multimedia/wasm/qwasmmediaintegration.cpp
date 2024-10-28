@@ -26,8 +26,6 @@
 QT_BEGIN_NAMESPACE
 
 
-static Q_LOGGING_CATEGORY(qtWasmMediaPlugin, "qt.multimedia.wasm")
-
 class QWasmMediaPlugin : public QPlatformMediaPlugin
 {
     Q_OBJECT
@@ -40,16 +38,14 @@ public:
 
     QPlatformMediaIntegration *create(const QString &name) override
     {
-        if (name == QLatin1String("wasm"))
+        if (name == u"wasm")
             return new QWasmMediaIntegration;
         return nullptr;
     }
 };
 
 QWasmMediaIntegration::QWasmMediaIntegration()
-{
-   m_videoDevices = std::make_unique<QWasmCameraDevices>(this);
-}
+    : QPlatformMediaIntegration(QLatin1String("wasm")) { }
 
 QMaybe<QPlatformMediaPlayer *> QWasmMediaIntegration::createPlayer(QMediaPlayer *player)
 {
@@ -77,6 +73,11 @@ QPlatformMediaFormatInfo *QWasmMediaIntegration::createFormatInfo()
     return new QPlatformMediaFormatInfo;
 }
 
+QPlatformVideoDevices *QWasmMediaIntegration::createVideoDevices()
+{
+    return new QWasmCameraDevices(this);
+}
+
 QMaybe<QPlatformMediaCaptureSession *> QWasmMediaIntegration::createCaptureSession()
 {
     return new QWasmMediaCaptureSession();
@@ -100,7 +101,7 @@ QWasmMediaIntegration::createImageCapture(QImageCapture *imageCapture)
 
 QList<QCameraDevice> QWasmMediaIntegration::videoInputs()
 {
-    return m_videoDevices->videoDevices();
+    return videoDevices()->videoDevices();
 }
 
 QT_END_NAMESPACE

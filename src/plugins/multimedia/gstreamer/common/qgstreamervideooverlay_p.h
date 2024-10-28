@@ -15,22 +15,23 @@
 // We mean it.
 //
 
-#include <qgstpipeline_p.h>
-#include <qgstreamerbufferprobe_p.h>
-#include <qgst_p.h>
 #include <QtGui/qwindowdefs.h>
+
+#include <common/qgstreamerbufferprobe_p.h>
+#include <common/qgst_p.h>
+#include <common/qgst_bus_p.h>
 
 QT_BEGIN_NAMESPACE
 class QGstreamerVideoSink;
 
-class Q_MULTIMEDIA_EXPORT QGstreamerVideoOverlay
-        : public QObject
-        , public QGstreamerSyncMessageFilter
-        , private QGstreamerBufferProbe
+class QGstreamerVideoOverlay : public QObject,
+                               public QGstreamerSyncMessageFilter,
+                               private QGstreamerBufferProbe
 {
     Q_OBJECT
 public:
-    explicit QGstreamerVideoOverlay(QGstreamerVideoSink *parent = 0, const QByteArray &elementName = QByteArray());
+    explicit QGstreamerVideoOverlay(QGstreamerVideoSink *parent = nullptr,
+                                    const QByteArray &elementName = QByteArray());
     virtual ~QGstreamerVideoOverlay();
 
     QGstElement videoSink() const;

@@ -15,6 +15,7 @@
 //
 
 #include <private/qplatformaudioinput_p.h>
+#include <private/qplatformaudiobufferinput_p.h>
 #include "qffmpegthread_p.h"
 #include <qaudioinput.h>
 
@@ -28,8 +29,9 @@ class AudioSourceIO;
 
 constexpr int DefaultAudioInputBufferSize = 4096;
 
-class QFFmpegAudioInput : public QObject, public QPlatformAudioInput
+class QFFmpegAudioInput : public QPlatformAudioBufferInputBase, public QPlatformAudioInput
 {
+    // for qobject_cast
     Q_OBJECT
 public:
     QFFmpegAudioInput(QAudioInput *qq);
@@ -44,11 +46,8 @@ public:
 
     int bufferSize() const;
 
-Q_SIGNALS:
-    void newAudioBuffer(const QAudioBuffer &buffer);
-
 private:
-    std::unique_ptr<QFFmpeg::AudioSourceIO> audioIO;
+    QFFmpeg::AudioSourceIO *audioIO = nullptr;
     std::unique_ptr<QThread> inputThread;
 };
 

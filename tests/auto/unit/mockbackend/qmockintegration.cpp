@@ -1,6 +1,7 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
+#include <QtMultimedia/private/qplatformmediaplugin_p.h>
 #include "qmockintegration.h"
 #include "qmockmediaplayer.h"
 #include "qmockaudiodecoder.h"
@@ -13,7 +14,25 @@
 #include <private/qcameradevice_p.h>
 #include <private/qplatformvideodevices_p.h>
 
+#include "qmockmediadevices.h"
+
 QT_BEGIN_NAMESPACE
+
+class MockMultimediaPlugin : public QPlatformMediaPlugin
+{
+    Q_OBJECT
+    Q_PLUGIN_METADATA(IID QPlatformMediaPlugin_iid FILE "mock.json")
+
+public:
+    MockMultimediaPlugin() : QPlatformMediaPlugin() { }
+
+    QPlatformMediaIntegration *create(const QString &name) override
+    {
+        if (name == QLatin1String("mock"))
+            return new QMockIntegration;
+        return nullptr;
+    }
+};
 
 class QMockVideoDevices : public QPlatformVideoDevices
 {
@@ -22,7 +41,7 @@ public:
         : QPlatformVideoDevices(pmi)
     {
         QCameraDevicePrivate *info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("defaultCamera");
+        info->description = QStringLiteral("defaultCamera");
         info->id = "default";
         info->isDefault = true;
         auto *f = new QCameraFormatPrivate{
@@ -35,7 +54,7 @@ public:
         info->videoFormats << f->create();
         m_cameraDevices.append(info->create());
         info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("frontCamera");
+        info->description = QStringLiteral("frontCamera");
         info->id = "front";
         info->isDefault = false;
         info->position = QCameraDevice::FrontFace;
@@ -49,7 +68,7 @@ public:
         info->videoFormats << f->create();
         m_cameraDevices.append(info->create());
         info = new QCameraDevicePrivate;
-        info->description = QString::fromUtf8("backCamera");
+        info->description = QStringLiteral("backCamera");
         info->id = "back";
         info->isDefault = false;
         info->position = QCameraDevice::BackFace;
@@ -77,12 +96,18 @@ private:
     QList<QCameraDevice> m_cameraDevices;
 };
 
-QMockIntegration::QMockIntegration()
+QMockIntegration::QMockIntegration() : QPlatformMediaIntegration(QLatin1String("mock")) { }
+QMockIntegration::~QMockIntegration() = default;
+
+QPlatformVideoDevices *QMockIntegration::createVideoDevices()
 {
-    m_videoDevices = std::make_unique<QMockVideoDevices>(this);
+    return new QMockVideoDevices(this);
 }
 
-QMockIntegration::~QMockIntegration() = default;
+std::unique_ptr<QPlatformMediaDevices> QMockIntegration::createMediaDevices()
+{
+    return std::make_unique<QMockMediaDevices>();
+}
 
 QMaybe<QPlatformAudioDecoder *> QMockIntegration::createAudioDecoder(QAudioDecoder *decoder)
 {
@@ -163,9 +188,11 @@ QMaybe<QPlatformAudioOutput *> QMockIntegration::createAudioOutput(QAudioOutput 
 
 void QMockIntegration::addNewCamera()
 {
-    static_cast<QMockVideoDevices &>(*m_videoDevices).addNewCamera();
+    static_cast<QMockVideoDevices *>(videoDevices())->addNewCamera();
 }
 
 bool QMockCamera::simpleCamera = false;
 
 QT_END_NAMESPACE
+
+#include "qmockintegration.moc"

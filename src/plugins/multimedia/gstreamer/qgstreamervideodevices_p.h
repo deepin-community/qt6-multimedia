@@ -20,27 +20,38 @@
 #include <qaudiodevice.h>
 #include <vector>
 
+#include <common/qgst_handle_types_p.h>
+#include <common/qgst_bus_p.h>
+
 QT_BEGIN_NAMESPACE
 
-class QGstreamerVideoDevices : public QPlatformVideoDevices
+class QGstreamerVideoDevices final : public QPlatformVideoDevices,
+                                     private QGstreamerBusMessageFilter
 {
 public:
-    QGstreamerVideoDevices(QPlatformMediaIntegration *integration);
+    explicit QGstreamerVideoDevices(QPlatformMediaIntegration *integration);
+    ~QGstreamerVideoDevices();
 
     QList<QCameraDevice> videoDevices() const override;
     GstDevice *videoDevice(const QByteArray &id) const;
 
-    void addDevice(GstDevice *);
-    void removeDevice(GstDevice *);
+    void addDevice(QGstDeviceHandle);
+    void removeDevice(QGstDeviceHandle);
 
 private:
-    struct QGstDevice {
-        GstDevice *gstDevice = nullptr;
+    bool processBusMessage(const QGstreamerMessage &message) override;
+
+    struct QGstRecordDevice
+    {
+        QGstDeviceHandle gstDevice;
         QByteArray id;
     };
 
     quint64 m_idGenerator = 0;
-    std::vector<QGstDevice> m_videoSources;
+    std::vector<QGstRecordDevice> m_videoSources;
+
+    QGstDeviceMonitorHandle m_deviceMonitor;
+    QGstBus m_bus;
 };
 
 QT_END_NAMESPACE

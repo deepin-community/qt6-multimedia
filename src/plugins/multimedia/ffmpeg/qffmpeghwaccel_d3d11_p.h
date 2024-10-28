@@ -15,6 +15,12 @@
 //
 
 #include "qffmpeghwaccel_p.h"
+#include <private/quniquehandle_p.h>
+#include <private/qcomptr_p.h>
+#include <qt_windows.h>
+
+#include <d3d11.h>
+#include <d3d11_1.h>
 
 #if QT_CONFIG(wmf)
 
@@ -24,6 +30,56 @@ class QRhi;
 
 namespace QFFmpeg {
 
+struct SharedTextureHandleTraits
+{
+    using Type = HANDLE;
+    static Type invalidValue() { return nullptr; }
+    static bool close(Type handle) { return CloseHandle(handle) != 0; }
+};
+
+using SharedTextureHandle = QUniqueHandle<SharedTextureHandleTraits>;
+
+/*! \internal Utility class for synchronized transfer of a texture between two D3D devices
+ *
+ * This class is used to copy a texture from one device to another device. This
+ * is implemented using a shared texture, along with keyed mutexes to synchronize
+ * access to the texture.
+ *
+ * This is needed because we need to copy data from FFmpeg to RHI. FFmpeg and RHI
+ * uses different D3D devices.
+ */
+class TextureBridge final
+{
+public:
+    /** Copy a texture slice at position 'index' belonging to device 'dev'
+     * into a shared texture, limiting the texture size to the frame size */
+    bool copyToSharedTex(ID3D11Device *dev, ID3D11DeviceContext *ctx,
+                         const ComPtr<ID3D11Texture2D> &tex, UINT index, const QSize &frameSize);
+
+    /** Obtain a copy of the texture on a second device 'dev' */
+    ComPtr<ID3D11Texture2D> copyFromSharedTex(const ComPtr<ID3D11Device1> &dev,
+                                              const ComPtr<ID3D11DeviceContext> &ctx);
+
+private:
+    bool ensureDestTex(const ComPtr<ID3D11Device1> &dev);
+    bool ensureSrcTex(ID3D11Device *dev, const ComPtr<ID3D11Texture2D> &tex, const QSize &frameSize);
+    bool isSrcInitialized(const ID3D11Device *dev, const ComPtr<ID3D11Texture2D> &tex, const QSize &frameSize) const;
+    bool recreateSrc(ID3D11Device *dev, const ComPtr<ID3D11Texture2D> &tex, const QSize &frameSize);
+
+    SharedTextureHandle m_sharedHandle{};
+
+    const UINT m_srcKey = 0;
+    ComPtr<ID3D11Texture2D> m_srcTex;
+    ComPtr<IDXGIKeyedMutex> m_srcMutex;
+
+    const UINT m_destKey = 1;
+    ComPtr<ID3D11Device1> m_destDevice;
+    ComPtr<ID3D11Texture2D> m_destTex;
+    ComPtr<IDXGIKeyedMutex> m_destMutex;
+
+    ComPtr<ID3D11Texture2D> m_outputTex;
+};
+
 class D3D11TextureConverter : public TextureConverterBackend
 {
 public:
@@ -32,9 +88,16 @@ public:
     TextureSet *getTextures(AVFrame *frame) override;
 
     static void SetupDecoderTextures(AVCodecContext *s);
+
+private:
+    ComPtr<ID3D11Device1> m_rhiDevice;
+    ComPtr<ID3D11DeviceContext> m_rhiCtx;
+    TextureBridge m_bridge;
 };
 
-}
+AVFrameUPtr copyFromHwPoolD3D11(AVFrameUPtr src);
+
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

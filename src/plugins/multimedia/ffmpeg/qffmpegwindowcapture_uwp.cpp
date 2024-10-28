@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qffmpegwindowcapture_uwp_p.h"
-#include "qffmpegsurfacecapturethread_p.h"
-#include <private/qabstractvideobuffer_p.h>
+#include "qffmpegsurfacecapturegrabber_p.h"
+#include "qabstractvideobuffer.h"
+#include <private/qvideoframe_p.h>
 
 #include <unknwn.h>
 #include <winrt/base.h>
@@ -30,6 +31,7 @@ auto wait_for(Async const& async, Windows::Foundation::TimeSpan const& timeout);
 
 #include "qvideoframe.h"
 #include <qwindow.h>
+#include <qthread.h>
 #include <qloggingcategory.h>
 #include <qguiapplication.h>
 #include <private/qmultimediautils_p.h>
@@ -81,14 +83,9 @@ struct MultithreadedApartment
 class QUwpTextureVideoBuffer : public QAbstractVideoBuffer
 {
 public:
-    QUwpTextureVideoBuffer(com_ptr<IDXGISurface> &&surface)
-        : QAbstractVideoBuffer(QVideoFrame::NoHandle), m_surface(surface)
-    {
-    }
+    QUwpTextureVideoBuffer(com_ptr<IDXGISurface> &&surface) : m_surface(surface) { }
 
-    ~QUwpTextureVideoBuffer() override { QUwpTextureVideoBuffer::unmap(); }
-
-    QVideoFrame::MapMode mapMode() const override { return m_mapMode; }
+    ~QUwpTextureVideoBuffer() override { Q_ASSERT(m_mapMode == QVideoFrame::NotMapped); }
 
     MapData map(QVideoFrame::MapMode mode) override
     {
@@ -103,10 +100,10 @@ public:
                 hr = m_surface->GetDesc(&desc);
 
                 MapData md = {};
-                md.nPlanes = 1;
+                md.planeCount = 1;
                 md.bytesPerLine[0] = rect.Pitch;
                 md.data[0] = rect.pBits;
-                md.size[0] = desc.Width * desc.Height;
+                md.dataSize[0] = rect.Pitch * desc.Height;
 
                 m_mapMode = QVideoFrame::ReadOnly;
 
@@ -131,6 +128,8 @@ public:
 
         m_mapMode = QVideoFrame::NotMapped;
     }
+
+    QVideoFrameFormat format() const override { return {}; }
 
 private:
     QVideoFrame::MapMode m_mapMode = QVideoFrame::NotMapped;
@@ -280,6 +279,7 @@ private:
         return texture.as<IDXGISurface>();
     }
 
+    MultithreadedApartment m_comApartment{};
     HWND m_captureWindow{};
     winrt::Windows::Graphics::SizeInt32 m_frameSize{};
     com_ptr<ID3D11Device> m_device;
@@ -290,7 +290,7 @@ private:
 
 } // namespace
 
-class QFFmpegWindowCaptureUwp::Grabber : public QFFmpegSurfaceCaptureThread
+class QFFmpegWindowCaptureUwp::Grabber : public QFFmpegSurfaceCaptureGrabber
 {
     Q_OBJECT
 public:
@@ -304,7 +304,7 @@ public:
 
         const qreal refreshRate = getMonitorRefreshRateHz(monitor);
 
-        m_format.setFrameRate(refreshRate);
+        m_format.setStreamFrameRate(refreshRate);
         setFrameRate(refreshRate);
 
         addFrameCallback(capture, &QFFmpegWindowCaptureUwp::newVideoFrame);
@@ -317,19 +317,15 @@ public:
 
 protected:
 
-    void run() override
+    void initializeGrabbingContext() override
     {
         if (!m_adapter || !IsWindow(m_hwnd))
             return; // Error already logged
 
         try {
-            MultithreadedApartment comApartment;
-
             m_windowGrabber = std::make_unique<WindowGrabber>(m_adapter.get(), m_hwnd);
 
-            QFFmpegSurfaceCaptureThread::run();
-
-            m_windowGrabber = nullptr;
+            QFFmpegSurfaceCaptureGrabber::initializeGrabbingContext();
         } catch (const winrt::hresult_error &err) {
 
             const QString message = QLatin1String("Unable to capture window: ")
@@ -337,6 +333,12 @@ protected:
 
             updateError(InternalError, message);
         }
+    }
+
+    void finalizeGrabbingContext() override
+    {
+        QFFmpegSurfaceCaptureGrabber::finalizeGrabbingContext();
+        m_windowGrabber = nullptr;
     }
 
     QVideoFrame grabFrame() override
@@ -350,7 +352,8 @@ protected:
 
             m_format.setFrameSize(size);
 
-            return QVideoFrame(new QUwpTextureVideoBuffer(std::move(texture)), m_format);
+            return QVideoFramePrivate::createFrame(
+                    std::make_unique<QUwpTextureVideoBuffer>(std::move(texture)), m_format);
 
         } catch (const winrt::hresult_error &err) {
 

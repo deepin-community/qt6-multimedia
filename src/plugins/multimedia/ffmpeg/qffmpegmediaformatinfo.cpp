@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qffmpegmediaformatinfo_p.h"
+#include "qffmpegcodecstorage_p.h"
 #include "qaudioformat.h"
 #include "qimagewriter.h"
 
@@ -178,7 +179,8 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
         for (auto codec : audioEncoders) {
             auto id = codecId(codec);
             // only add the codec if it can be used with this container
-            if (avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL) == 1) {
+            int result = avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL);
+            if (result == 1 || (result < 0 && id == outputFormat->audio_codec)) {
                 // add codec for container
 //                qCDebug(qLcMediaFormatInfo) << "        " << codec << Qt::hex << av_codec_get_tag(outputFormat->codec_tag, id);
                 encoder.audio.append(codec);
@@ -187,7 +189,8 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
         for (auto codec : videoEncoders) {
             auto id = codecId(codec);
             // only add the codec if it can be used with this container
-            if (avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL) == 1) {
+            int result = avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL);
+            if (result == 1 || (result < 0 && id == outputFormat->video_codec)) {
                 // add codec for container
 //                qCDebug(qLcMediaFormatInfo) << "        " << codec << Qt::hex << av_codec_get_tag(outputFormat->codec_tag, id);
                 encoder.video.append(codec);

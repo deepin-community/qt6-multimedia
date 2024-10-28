@@ -1,67 +1,63 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include <qcameradevice.h>
+#include <mediacapture/qgstreamercamera_p.h>
 
-#include "qgstreamercamera_p.h"
-#include "qgstreamerimagecapture_p.h"
+#include <QtMultimedia/qcameradevice.h>
+#include <QtMultimedia/qmediacapturesession.h>
+#include <QtMultimedia/private/qcameradevice_p.h>
+#include <QtCore/qdebug.h>
+
+#include <common/qgst_debug_p.h>
 #include <qgstreamervideodevices_p.h>
 #include <qgstreamerintegration_p.h>
-#include <qmediacapturesession.h>
 
 #if QT_CONFIG(linux_v4l)
 #include <linux/videodev2.h>
 #include <private/qcore_unix_p.h>
 #endif
 
-#include <QtCore/qdebug.h>
 
 QT_BEGIN_NAMESPACE
 
 QMaybe<QPlatformCamera *> QGstreamerCamera::create(QCamera *camera)
 {
-    QGstElement videotestsrc("videotestsrc");
-    if (!videotestsrc)
-        return errorMessageCannotFindElement("videotestsrc");
+    static const auto error = qGstErrorMessageIfElementsNotAvailable(
+            "videotestsrc", "capsfilter", "videoconvert", "videoscale", "identity");
+    if (error)
+        return *error;
 
-    QGstElement capsFilter("capsfilter", "videoCapsFilter");
-    if (!capsFilter)
-        return errorMessageCannotFindElement("capsfilter");
-
-    QGstElement videoconvert("videoconvert", "videoConvert");
-    if (!videoconvert)
-        return errorMessageCannotFindElement("videoconvert");
-
-    QGstElement videoscale("videoscale", "videoScale");
-    if (!videoscale)
-        return errorMessageCannotFindElement("videoscale");
-
-    return new QGstreamerCamera(videotestsrc, capsFilter, videoconvert, videoscale, camera);
+    return new QGstreamerCamera(camera);
 }
 
-QGstreamerCamera::QGstreamerCamera(QGstElement videotestsrc, QGstElement capsFilter,
-                                   QGstElement videoconvert, QGstElement videoscale,
-                                   QCamera *camera)
-    : QPlatformCamera(camera),
-      gstCamera(std::move(videotestsrc)),
-      gstCapsFilter(std::move(capsFilter)),
-      gstVideoConvert(std::move(videoconvert)),
-      gstVideoScale(std::move(videoscale))
+QGstreamerCamera::QGstreamerCamera(QCamera *camera)
+    : QGstreamerCameraBase(camera),
+      gstCameraBin{
+          QGstBin::create("camerabin"),
+      },
+      gstCamera{
+          QGstElement::createFromFactory("videotestsrc"),
+      },
+      gstCapsFilter{
+          QGstElement::createFromFactory("capsfilter", "videoCapsFilter"),
+      },
+      gstDecode{
+          QGstElement::createFromFactory("identity"),
+      },
+      gstVideoConvert{
+          QGstElement::createFromFactory("videoconvert", "videoConvert"),
+      },
+      gstVideoScale{
+          QGstElement::createFromFactory("videoscale", "videoScale"),
+      }
 {
-    gstDecode = QGstElement("identity");
-    gstCameraBin = QGstBin("camerabin");
     gstCameraBin.add(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert, gstVideoScale);
-    gstCamera.link(gstCapsFilter, gstDecode, gstVideoConvert, gstVideoScale);
+    qLinkGstElements(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert, gstVideoScale);
     gstCameraBin.addGhostPad(gstVideoScale, "src");
 }
 
 QGstreamerCamera::~QGstreamerCamera()
 {
-#if QT_CONFIG(linux_v4l)
-    if (v4l2FileDescriptor >= 0)
-        qt_safe_close(v4l2FileDescriptor);
-    v4l2FileDescriptor = -1;
-#endif
     gstCameraBin.setStateSync(GST_STATE_NULL);
 }
 
@@ -84,6 +80,8 @@ void QGstreamerCamera::setActive(bool active)
 
 void QGstreamerCamera::setCamera(const QCameraDevice &camera)
 {
+    using namespace Qt::Literals;
+
     if (m_cameraDevice == camera)
         return;
 
@@ -91,50 +89,49 @@ void QGstreamerCamera::setCamera(const QCameraDevice &camera)
 
     QGstElement gstNewCamera;
     if (camera.isNull()) {
-        gstNewCamera = QGstElement("videotestsrc");
+        gstNewCamera = QGstElement::createFromFactory("videotestsrc");
     } else {
         auto *integration = static_cast<QGstreamerIntegration *>(QGstreamerIntegration::instance());
-        auto *device = integration->videoDevice(camera.id());
-        gstNewCamera = gst_device_create_element(device, "camerasrc");
-        if (QGstStructure properties = gst_device_get_properties(device); !properties.isNull()) {
-            if (properties.name() == "v4l2deviceprovider")
-                m_v4l2Device = QString::fromUtf8(properties["device.path"].toString());
-            properties.free();
+        GstDevice *device = integration->videoDevice(camera.id());
+
+        if (!device) {
+            updateError(QCamera::Error::CameraError,
+                        u"Failed to create GstDevice for camera: "_s
+                                + QString::fromUtf8(camera.id()));
+            return;
+        }
+
+        gstNewCamera = QGstElement::createFromDevice(device, "camerasrc");
+        QUniqueGstStructureHandle properties{
+            gst_device_get_properties(device),
+        };
+
+        if (properties) {
+            QGstStructureView propertiesView{ properties };
+            if (propertiesView.name() == "v4l2deviceprovider")
+                m_v4l2DevicePath = QString::fromUtf8(propertiesView["device.path"].toString());
         }
     }
 
     QCameraFormat f = findBestCameraFormat(camera);
     auto caps = QGstCaps::fromCameraFormat(f);
-    auto gstNewDecode = QGstElement(f.pixelFormat() == QVideoFrameFormat::Format_Jpeg ? "jpegdec" : "identity");
+    auto gstNewDecode = QGstElement::createFromFactory(
+            f.pixelFormat() == QVideoFrameFormat::Format_Jpeg ? "jpegdec" : "identity");
 
-    gstCamera.unlink(gstCapsFilter);
-    gstCapsFilter.unlink(gstDecode);
-    gstDecode.unlink(gstVideoConvert);
+    gstVideoConvert.sink().modifyPipelineInIdleProbe([&] {
+        qUnlinkGstElements(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert);
+        gstCameraBin.stopAndRemoveElements(gstCamera, gstDecode);
 
-    gstCameraBin.remove(gstCamera);
-    gstCameraBin.remove(gstDecode);
+        gstCapsFilter.set("caps", caps);
 
-    gstCamera.setStateSync(GST_STATE_NULL);
-    gstDecode.setStateSync(GST_STATE_NULL);
+        gstCamera = std::move(gstNewCamera);
+        gstDecode = std::move(gstNewDecode);
 
-    gstCapsFilter.set("caps", caps);
+        gstCameraBin.add(gstCamera, gstDecode);
+        qLinkGstElements(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert);
 
-    gstCameraBin.add(gstNewCamera, gstNewDecode);
-
-    gstNewDecode.link(gstVideoConvert);
-    gstCapsFilter.link(gstNewDecode);
-
-    if (!gstNewCamera.link(gstCapsFilter))
-        qWarning() << "linking camera failed" << gstCamera.name() << caps.toString();
-
-    // Start sending frames once pipeline is linked
-    // FIXME: put camera to READY state before linking to decoder as in the NULL state it does not know its true caps
-    gstCapsFilter.syncStateWithParent();
-    gstNewDecode.syncStateWithParent();
-    gstNewCamera.syncStateWithParent();
-
-    gstCamera = gstNewCamera;
-    gstDecode = gstNewDecode;
+        gstCameraBin.syncChildrenState();
+    });
 
     updateCameraProperties();
 }
@@ -150,27 +147,21 @@ bool QGstreamerCamera::setCameraFormat(const QCameraFormat &format)
 
     auto caps = QGstCaps::fromCameraFormat(f);
 
-    auto newGstDecode = QGstElement(f.pixelFormat() == QVideoFrameFormat::Format_Jpeg ? "jpegdec" : "identity");
-    gstCameraBin.add(newGstDecode);
-    newGstDecode.syncStateWithParent();
+    auto newGstDecode = QGstElement::createFromFactory(
+            f.pixelFormat() == QVideoFrameFormat::Format_Jpeg ? "jpegdec" : "identity");
 
-    gstCamera.staticPad("src").doInIdleProbe([&](){
-        gstCamera.unlink(gstCapsFilter);
-        gstCapsFilter.unlink(gstDecode);
-        gstDecode.unlink(gstVideoConvert);
+    gstVideoConvert.sink().modifyPipelineInIdleProbe([&] {
+        qUnlinkGstElements(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert);
+        gstCameraBin.stopAndRemoveElements(gstDecode);
 
         gstCapsFilter.set("caps", caps);
 
-        newGstDecode.link(gstVideoConvert);
-        gstCapsFilter.link(newGstDecode);
-        if (!gstCamera.link(gstCapsFilter))
-            qWarning() << "linking filtered camera to decoder failed" << gstCamera.name() << caps.toString();
+        gstDecode = std::move(newGstDecode);
+
+        gstCameraBin.add(gstDecode);
+        qLinkGstElements(gstCamera, gstCapsFilter, gstDecode, gstVideoConvert);
+        gstCameraBin.syncChildrenState();
     });
-
-    gstCameraBin.remove(gstDecode);
-    gstDecode.setStateSync(GST_STATE_NULL);
-
-    gstDecode = newGstDecode;
 
     return true;
 }
@@ -609,83 +600,78 @@ void QGstreamerCamera::setColorTemperature(int temperature)
 }
 
 #if QT_CONFIG(linux_v4l)
+bool QGstreamerCamera::isV4L2Camera() const
+{
+    return !m_v4l2DevicePath.isEmpty();
+}
+
 void QGstreamerCamera::initV4L2Controls()
 {
     v4l2AutoWhiteBalanceSupported = false;
     v4l2ColorTemperatureSupported = false;
-    QCamera::Features features;
+    QCamera::Features features{};
+
+    Q_ASSERT(!m_v4l2DevicePath.isEmpty());
 
 
-    const QString deviceName = v4l2Device();
-    Q_ASSERT(!deviceName.isEmpty());
+    withV4L2DeviceFileDescriptor([&](int fd) {
+        struct v4l2_queryctrl queryControl = {};
+        queryControl.id = V4L2_CID_AUTO_WHITE_BALANCE;
 
-    v4l2FileDescriptor = qt_safe_open(deviceName.toLocal8Bit().constData(), O_RDONLY);
-    if (v4l2FileDescriptor == -1) {
-        qWarning() << "Unable to open the camera" << deviceName
-                   << "for read to query the parameter info:" << qt_error_string(errno);
-        return;
-    }
-
-    struct v4l2_queryctrl queryControl;
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_AUTO_WHITE_BALANCE;
-
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        v4l2AutoWhiteBalanceSupported = true;
-        setV4L2Parameter(V4L2_CID_AUTO_WHITE_BALANCE, true);
-    }
-
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_WHITE_BALANCE_TEMPERATURE;
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        v4l2MinColorTemp = queryControl.minimum;
-        v4l2MaxColorTemp = queryControl.maximum;
-        v4l2ColorTemperatureSupported = true;
-        features |= QCamera::Feature::ColorTemperature;
-    }
-
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_EXPOSURE_AUTO;
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        v4l2AutoExposureSupported = true;
-    }
-
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        v4l2ManualExposureSupported = true;
-        v4l2MinExposure = queryControl.minimum;
-        v4l2MaxExposure = queryControl.maximum;
-        features |= QCamera::Feature::ManualExposureTime;
-    }
-
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_AUTO_EXPOSURE_BIAS;
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        v4l2MinExposureAdjustment = queryControl.minimum;
-        v4l2MaxExposureAdjustment = queryControl.maximum;
-        features |= QCamera::Feature::ExposureCompensation;
-    }
-
-    ::memset(&queryControl, 0, sizeof(queryControl));
-    queryControl.id = V4L2_CID_ISO_SENSITIVITY_AUTO;
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-        queryControl.id = V4L2_CID_ISO_SENSITIVITY;
-        if (::ioctl(v4l2FileDescriptor, VIDIOC_QUERYCTRL, &queryControl) == 0) {
-            features |= QCamera::Feature::IsoSensitivity;
-            minIsoChanged(queryControl.minimum);
-            maxIsoChanged(queryControl.minimum);
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            v4l2AutoWhiteBalanceSupported = true;
+            setV4L2Parameter(V4L2_CID_AUTO_WHITE_BALANCE, true);
         }
-    }
+
+        queryControl = {};
+        queryControl.id = V4L2_CID_WHITE_BALANCE_TEMPERATURE;
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            v4l2MinColorTemp = queryControl.minimum;
+            v4l2MaxColorTemp = queryControl.maximum;
+            v4l2ColorTemperatureSupported = true;
+            features |= QCamera::Feature::ColorTemperature;
+        }
+
+        queryControl = {};
+        queryControl.id = V4L2_CID_EXPOSURE_AUTO;
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            v4l2AutoExposureSupported = true;
+        }
+
+        queryControl = {};
+        queryControl.id = V4L2_CID_EXPOSURE_ABSOLUTE;
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            v4l2ManualExposureSupported = true;
+            v4l2MinExposure = queryControl.minimum;
+            v4l2MaxExposure = queryControl.maximum;
+            features |= QCamera::Feature::ManualExposureTime;
+        }
+
+        queryControl = {};
+        queryControl.id = V4L2_CID_AUTO_EXPOSURE_BIAS;
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            v4l2MinExposureAdjustment = queryControl.minimum;
+            v4l2MaxExposureAdjustment = queryControl.maximum;
+            features |= QCamera::Feature::ExposureCompensation;
+        }
+
+        queryControl = {};
+        queryControl.id = V4L2_CID_ISO_SENSITIVITY_AUTO;
+        if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+            queryControl.id = V4L2_CID_ISO_SENSITIVITY;
+            if (::ioctl(fd, VIDIOC_QUERYCTRL, &queryControl) == 0) {
+                features |= QCamera::Feature::IsoSensitivity;
+                minIsoChanged(queryControl.minimum);
+                maxIsoChanged(queryControl.minimum);
+            }
+        }
+    });
 
     supportedFeaturesChanged(features);
 }
 
 int QGstreamerCamera::setV4L2ColorTemperature(int temperature)
 {
-    struct v4l2_control control;
-    ::memset(&control, 0, sizeof(control));
-
     if (v4l2AutoWhiteBalanceSupported) {
         setV4L2Parameter(V4L2_CID_AUTO_WHITE_BALANCE, temperature == 0 ? true : false);
     } else if (temperature == 0) {
@@ -705,26 +691,77 @@ int QGstreamerCamera::setV4L2ColorTemperature(int temperature)
 
 bool QGstreamerCamera::setV4L2Parameter(quint32 id, qint32 value)
 {
-    struct v4l2_control control{id, value};
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_S_CTRL, &control) != 0) {
-        qWarning() << "Unable to set the V4L2 Parameter" << Qt::hex << id << "to" << value << qt_error_string(errno);
-        return false;
-    }
-    return true;
+    return withV4L2DeviceFileDescriptor([&](int fd) {
+        v4l2_control control{ id, value };
+        if (::ioctl(fd, VIDIOC_S_CTRL, &control) != 0) {
+            qWarning() << "Unable to set the V4L2 Parameter" << Qt::hex << id << "to" << value
+                       << qt_error_string(errno);
+            return false;
+        }
+        return true;
+    });
 }
 
 int QGstreamerCamera::getV4L2Parameter(quint32 id) const
 {
-    struct v4l2_control control{id, 0};
-    if (::ioctl(v4l2FileDescriptor, VIDIOC_G_CTRL, &control) != 0) {
-        qWarning() << "Unable to get the V4L2 Parameter" << Qt::hex << id << qt_error_string(errno);
-        return 0;
-    }
-    return control.value;
+    return withV4L2DeviceFileDescriptor([&](int fd) {
+        v4l2_control control{ id, 0 };
+        if (::ioctl(fd, VIDIOC_G_CTRL, &control) != 0) {
+            qWarning() << "Unable to get the V4L2 Parameter" << Qt::hex << id
+                       << qt_error_string(errno);
+            return 0;
+        }
+        return control.value;
+    });
 }
 
-#endif
+#endif // QT_CONFIG(linux_v4l)
+
+QGstreamerCustomCamera::QGstreamerCustomCamera(QCamera *camera)
+    : QGstreamerCameraBase{
+          camera,
+      },
+      m_userProvidedGstElement{
+          false,
+      }
+{
+}
+
+QGstreamerCustomCamera::QGstreamerCustomCamera(QCamera *camera, QGstElement element)
+    : QGstreamerCameraBase{
+          camera,
+      },
+      gstCamera{
+          std::move(element),
+      },
+      m_userProvidedGstElement{
+          true,
+      }
+{
+}
+
+void QGstreamerCustomCamera::setCamera(const QCameraDevice &device)
+{
+    if (m_userProvidedGstElement)
+        return;
+
+    gstCamera = QGstBin::createFromPipelineDescription(device.id(), /*name=*/nullptr,
+                                                       /* ghostUnlinkedPads=*/true);
+}
+
+bool QGstreamerCustomCamera::isActive() const
+{
+    return m_active;
+}
+
+void QGstreamerCustomCamera::setActive(bool active)
+{
+    if (m_active == active)
+        return;
+
+    m_active = active;
+
+    emit activeChanged(active);
+}
 
 QT_END_NAMESPACE
-
-#include "moc_qgstreamercamera_p.cpp"

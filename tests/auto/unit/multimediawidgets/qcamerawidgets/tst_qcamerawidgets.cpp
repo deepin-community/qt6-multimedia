@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QDebug>
@@ -21,6 +19,7 @@
 
 QT_USE_NAMESPACE
 
+Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
 class tst_QCameraWidgets: public QObject
 {
@@ -33,9 +32,6 @@ public slots:
 private slots:
     void testCameraEncodingProperyChange();
     void testSetVideoOutput();
-
-private:
-    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 void tst_QCameraWidgets::initTestCase()
@@ -55,7 +51,7 @@ void tst_QCameraWidgets::testCameraEncodingProperyChange()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy activeChangedSignal(&camera, SIGNAL(activeChanged(bool)));
+    QSignalSpy activeChangedSignal(&camera, &QCamera::activeChanged);
 
     camera.start();
     QCOMPARE(camera.isActive(), true);

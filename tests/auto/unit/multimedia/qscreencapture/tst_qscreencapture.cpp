@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 // TESTED_COMPONENT=src/multimedia
 
@@ -12,6 +12,8 @@
 #include "qatomic.h"
 
 QT_USE_NAMESPACE
+
+Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
 class tst_QScreenCapture : public QObject
 {
@@ -30,23 +32,10 @@ private:
         return QTest::qWaitFor([&newFrameReceived]() { return newFrameReceived; });
     }
 
-public slots:
-    void initTestCase();
-    void init();
-    void cleanup();
-
 private slots:
     void destructionOfActiveCapture();
 
-private:
-    QMockIntegrationFactory mockIntegrationFactory;
 };
-
-void tst_QScreenCapture::initTestCase() { }
-
-void tst_QScreenCapture::init() { }
-
-void tst_QScreenCapture::cleanup() { }
 
 void tst_QScreenCapture::destructionOfActiveCapture()
 {

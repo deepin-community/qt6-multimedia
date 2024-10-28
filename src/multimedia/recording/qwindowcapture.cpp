@@ -34,11 +34,13 @@ public:
     the QMediaCaptureSession class where the captured window can be displayed
     in a video preview object or recorded to a file.
 
+    \include qwindowcapture-limitations.qdocinc {content} {Q}
+
     \sa QMediaCaptureSession, QCapturableWindow
 */
 /*!
     \qmltype WindowCapture
-    \instantiates QWindowCapture
+    \nativetype QWindowCapture
     \inqmlmodule QtMultimedia
     \ingroup multimedia_qml
     \ingroup multimedia_video_qml
@@ -49,6 +51,8 @@ public:
     WindowCapture captures a window. It is managed by
     MediaCaptureSession where the captured window can be displayed
     in a video preview object or recorded to a file.
+
+    \include qwindowcapture-limitations.qdocinc {content} {}
 
     \sa CaptureSession, CapturableWindow
 */
@@ -119,7 +123,7 @@ QWindowCapture::~QWindowCapture()
  */
 QList<QCapturableWindow> QWindowCapture::capturableWindows()
 {
-    return QPlatformMediaIntegration::instance()->capturableWindows();
+    return QPlatformMediaIntegration::instance()->capturableWindowsList();
 }
 
 QMediaCaptureSession *QWindowCapture::captureSession() const
@@ -210,7 +214,7 @@ void QWindowCapture::setActive(bool active)
 
 
 /*!
-    \qmlproperty string QtMultimedia::WindowCapture::error
+    \qmlproperty enumeration QtMultimedia::WindowCapture::error
     Returns a code of the last error.
 */
 

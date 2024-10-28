@@ -5,9 +5,10 @@
 #include <QtQuick/qsgmaterial.h>
 #include "qsgvideotexture_p.h"
 #include <QtMultimedia/private/qvideotexturehelper_p.h>
-#include <private/qquicktextnode_p.h>
+#include <private/qsginternaltextnode_p.h>
+#include <private/qquickitem_p.h>
 #include <private/qquickvideooutput_p.h>
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -39,11 +40,17 @@ class QSGVideoMaterial;
 class QSGVideoMaterialRhiShader : public QSGMaterialShader
 {
 public:
-    QSGVideoMaterialRhiShader(const QVideoFrameFormat &format)
-        : m_format(format)
+    QSGVideoMaterialRhiShader(const QVideoFrameFormat &videoFormat,
+                              const QRhiSwapChain::Format surfaceFormat,
+                              const QRhiSwapChainHdrInfo &hdrInfo)
+        : m_videoFormat(videoFormat)
+        , m_surfaceFormat(surfaceFormat)
+        , m_hdrInfo(hdrInfo)
     {
-        setShaderFileName(VertexStage, m_format.vertexShaderFileName());
-        setShaderFileName(FragmentStage, m_format.fragmentShaderFileName());
+        setShaderFileName(VertexStage, QVideoTextureHelper::vertexShaderFileName(m_videoFormat));
+        setShaderFileName(
+                FragmentStage,
+                QVideoTextureHelper::fragmentShaderFileName(m_videoFormat, m_surfaceFormat));
     }
 
     bool updateUniformData(RenderState &state, QSGMaterial *newMaterial,
@@ -53,21 +60,24 @@ public:
                             QSGMaterial *newMaterial, QSGMaterial *oldMaterial) override;
 
 protected:
-    QVideoFrameFormat m_format;
+    QVideoFrameFormat m_videoFormat;
+    QRhiSwapChain::Format m_surfaceFormat;
+    QRhiSwapChainHdrInfo m_hdrInfo;
 };
 
 class QSGVideoMaterial : public QSGMaterial
 {
 public:
-    QSGVideoMaterial(const QVideoFrameFormat &format);
+    QSGVideoMaterial(const QVideoFrameFormat &videoFormat);
 
     [[nodiscard]] QSGMaterialType *type() const override {
-        static QSGMaterialType type[QVideoFrameFormat::NPixelFormats];
-        return &type[m_format.pixelFormat()];
+        static constexpr int NFormats = QRhiSwapChain::HDRExtendedDisplayP3Linear + 1;
+        static QSGMaterialType type[QVideoFrameFormat::NPixelFormats][NFormats];
+        return &type[m_videoFormat.pixelFormat()][m_surfaceFormat];
     }
 
     [[nodiscard]] QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override {
-        return new QSGVideoMaterialRhiShader(m_format);
+        return new QSGVideoMaterialRhiShader(m_videoFormat, m_surfaceFormat, m_hdrInfo);
     }
 
     int compare(const QSGMaterial *other) const override {
@@ -92,10 +102,22 @@ public:
         m_texturesDirty = true;
     }
 
+    void setSurfaceFormat(const QRhiSwapChain::Format surfaceFormat)
+    {
+        m_surfaceFormat = surfaceFormat;
+    }
+
+    void setHdrInfo(const QRhiSwapChainHdrInfo &hdrInfo)
+    {
+        m_hdrInfo = hdrInfo;
+    }
+
     void updateTextures(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates);
 
-    QVideoFrameFormat m_format;
+    QVideoFrameFormat m_videoFormat;
+    QRhiSwapChain::Format m_surfaceFormat = QRhiSwapChain::SDR;
     float m_opacity = 1.0f;
+    QRhiSwapChainHdrInfo m_hdrInfo;
 
     bool m_texturesDirty = false;
     QVideoFrame m_currentFrame;
@@ -146,8 +168,16 @@ bool QSGVideoMaterialRhiShader::updateUniformData(RenderState &state, QSGMateria
     // updated by this function and we need that already in updateUniformData.
     m->updateTextures(state.rhi(), state.resourceUpdateBatch());
 
-    m_format.updateUniformData(state.uniformData(), m->m_currentFrame,
-                               state.combinedMatrix(), state.opacity());
+    float maxNits = 100; // Default to de-facto SDR nits
+    if (m_surfaceFormat == QRhiSwapChain::HDRExtendedSrgbLinear) {
+        if (m_hdrInfo.limitsType == QRhiSwapChainHdrInfo::ColorComponentValue)
+            maxNits = 100 * m_hdrInfo.limits.colorComponentValue.maxColorComponentValue;
+        else
+            maxNits = m_hdrInfo.limits.luminanceInNits.maxLuminance;
+    }
+
+    QVideoTextureHelper::updateUniformData(state.uniformData(), m_videoFormat,
+        m->m_currentFrame, state.combinedMatrix(), state.opacity(), maxNits);
 
     return true;
 }
@@ -164,19 +194,18 @@ void QSGVideoMaterialRhiShader::updateSampledImage(RenderState &state, int bindi
     *texture = &m->m_textures[binding - 1];
 }
 
-QSGVideoMaterial::QSGVideoMaterial(const QVideoFrameFormat &format) :
-    m_format(format)
+QSGVideoMaterial::QSGVideoMaterial(const QVideoFrameFormat &videoFormat)
+    : m_videoFormat(videoFormat)
 {
     setFlag(Blending, false);
 }
 
-QSGVideoNode::QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &format)
-    : m_parent(parent),
-      m_format(format)
+QSGVideoNode::QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &videoFormat)
+    : m_parent(parent), m_videoFormat(videoFormat)
 {
     setFlag(QSGNode::OwnsMaterial);
     setFlag(QSGNode::OwnsGeometry);
-    m_material = new QSGVideoMaterial(format);
+    m_material = new QSGVideoMaterial(videoFormat);
     setMaterial(m_material);
 }
 
@@ -192,13 +221,26 @@ void QSGVideoNode::setCurrentFrame(const QVideoFrame &frame)
     updateSubtitle(frame);
 }
 
+void QSGVideoNode::setSurfaceFormat(const QRhiSwapChain::Format surfaceFormat)
+{
+    m_material->setSurfaceFormat(surfaceFormat);
+    markDirty(DirtyMaterial);
+}
+
+void QSGVideoNode::setHdrInfo(const QRhiSwapChainHdrInfo &hdrInfo)
+{
+    m_material->setHdrInfo(hdrInfo);
+    markDirty(DirtyMaterial);
+}
+
 void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
 {
     QSize subtitleFrameSize = m_rect.size().toSize();
     if (subtitleFrameSize.isEmpty())
         return;
-    if (m_orientation % 180)
-        subtitleFrameSize.transpose();
+
+    subtitleFrameSize = qRotatedFrameSize(subtitleFrameSize, m_orientation);
+
     if (!m_subtitleLayout.update(subtitleFrameSize, frame.subtitleText()))
         return;
 
@@ -207,11 +249,14 @@ void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
     if (frame.subtitleText().isEmpty())
         return;
 
-    m_subtitleTextNode = new QQuickTextNode(m_parent);
+    QQuickItemPrivate *parent_d = QQuickItemPrivate::get(m_parent);
+
+    m_subtitleTextNode = parent_d->sceneGraphContext()->createInternalTextNode(parent_d->sceneGraphRenderContext());
+    m_subtitleTextNode->setColor(Qt::white);
     QColor bgColor = Qt::black;
     bgColor.setAlpha(128);
     m_subtitleTextNode->addRectangleNode(m_subtitleLayout.bounds, bgColor);
-    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(), &m_subtitleLayout.layout, Qt::white);
+    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(), &m_subtitleLayout.layout);
     appendChildNode(m_subtitleTextNode);
     setSubtitleGeometry();
 }
@@ -247,27 +292,17 @@ void QSGVideoNode::setSubtitleGeometry()
 /* Update the vertices and texture coordinates.  Orientation must be in {0,90,180,270} */
 void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &textureRect, int orientation)
 {
-    bool frameChanged = false;
-    if (m_material) {
-        if (m_material->m_currentFrame.rotationAngle() != m_frameOrientation
-            || m_material->m_currentFrame.mirrored() != m_frameMirrored) {
-            frameChanged = true;
-        }
-    }
+    const NormalizedVideoTransformation currentFrameTransformation =
+            qNormalizedFrameTransformation(m_material ? m_material->m_currentFrame : QVideoFrame{});
+
     if (rect == m_rect && textureRect == m_textureRect && orientation == m_orientation
-        && !frameChanged)
+        && currentFrameTransformation == m_frameTransformation)
         return;
 
     m_rect = rect;
     m_textureRect = textureRect;
     m_orientation = orientation;
-    if (m_material) {
-        m_frameOrientation = m_material->m_currentFrame.rotationAngle();
-        m_frameMirrored = m_material->m_currentFrame.mirrored();
-    }
-    int videoRotation = orientation;
-    videoRotation += m_material ? m_material->m_currentFrame.rotationAngle() : 0;
-    videoRotation %= 360;
+    m_frameTransformation = currentFrameTransformation;
 
     QSGGeometry *g = geometry();
 
@@ -276,6 +311,11 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
 
     QSGGeometry::TexturedPoint2D *v = g->vertexDataAsTexturedPoint2D();
 
+    // Vertexes:
+    // 0   2
+    //
+    // 1   3
+
     // Set geometry first
     qSetGeom(v + 0, rect.topLeft());
     qSetGeom(v + 1, rect.bottomLeft());
@@ -283,7 +323,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
     qSetGeom(v + 3, rect.bottomRight());
 
     // and then texture coordinates
-    switch (videoRotation) {
+    switch (currentFrameTransformation.rotation) {
     default:
         // tl, bl, tr, br
         qSetTex(v + 0, textureRect.topLeft());
@@ -292,7 +332,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
         qSetTex(v + 3, textureRect.bottomRight());
         break;
 
-    case 90:
+    case QtVideo::Rotation::Clockwise90:
         // bl, br, tl, tr
         qSetTex(v + 0, textureRect.bottomLeft());
         qSetTex(v + 1, textureRect.bottomRight());
@@ -300,7 +340,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
         qSetTex(v + 3, textureRect.topRight());
         break;
 
-    case 180:
+    case QtVideo::Rotation::Clockwise180:
         // br, tr, bl, tl
         qSetTex(v + 0, textureRect.bottomRight());
         qSetTex(v + 1, textureRect.topRight());
@@ -308,7 +348,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
         qSetTex(v + 3, textureRect.topLeft());
         break;
 
-    case 270:
+    case QtVideo::Rotation::Clockwise270:
         // tr, tl, br, bl
         qSetTex(v + 0, textureRect.topRight());
         qSetTex(v + 1, textureRect.topLeft());
@@ -317,7 +357,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
         break;
     }
 
-    if (m_material && m_material->m_currentFrame.mirrored()) {
+    if (m_frameTransformation.xMirrorredAfterRotation) {
         qSwapTex(v + 0, v + 2);
         qSwapTex(v + 1, v + 3);
     }

@@ -4,16 +4,19 @@
 #include "qandroidcameraframe_p.h"
 #include <jni.h>
 #include <QDebug>
+#include <QtCore/qjnitypes.h>
 #include <QtCore/QLoggingCategory>
-
-Q_DECLARE_JNI_CLASS(AndroidImageFormat, "android/graphics/ImageFormat");
-
-Q_DECLARE_JNI_TYPE(AndroidImage, "Landroid/media/Image;")
-Q_DECLARE_JNI_TYPE(AndroidImagePlaneArray, "[Landroid/media/Image$Plane;")
-Q_DECLARE_JNI_TYPE(JavaByteBuffer, "Ljava/nio/ByteBuffer;")
 
 QT_BEGIN_NAMESPACE
 static Q_LOGGING_CATEGORY(qLCAndroidCameraFrame, "qt.multimedia.ffmpeg.android.camera.frame");
+
+namespace {
+bool isWorkaroundForEmulatorNeeded() {
+    const static bool workaroundForEmulator
+                 = QtJniTypes::QtVideoDeviceManager::callStaticMethod<jboolean>("isEmulator");
+    return workaroundForEmulator;
+}
+}
 
 bool QAndroidCameraFrame::parse(const QJniObject &frame)
 {
@@ -129,12 +132,25 @@ bool QAndroidCameraFrame::parse(const QJniObject &frame)
         m_planes[mapIndex].data = buffer[arrayIndex];
     };
 
+    int width = frame.callMethod<jint>("getWidth");
+    int height = frame.callMethod<jint>("getHeight");
+    m_size = QSize(width, height);
+
     switch (calculedPixelFormat) {
     case QVideoFrameFormat::Format_YUV420P:
         m_numberPlanes = 3;
         copyPlane(0, 0);
         copyPlane(1, 1);
         copyPlane(2, 2);
+
+        if (isWorkaroundForEmulatorNeeded()) {
+            for (int i = 0; i < 3; ++i) {
+                const int dataSize = (i == 0) ? width * height : width * height / 4;
+                m_planes[i].data = new uint8_t[dataSize];
+                memcpy(m_planes[i].data, buffer[i], dataSize);
+            }
+        }
+
         m_pixelFormat = QVideoFrameFormat::Format_YUV420P;
         break;
     case QVideoFrameFormat::Format_NV12:
@@ -145,7 +161,7 @@ bool QAndroidCameraFrame::parse(const QJniObject &frame)
         break;
     case QVideoFrameFormat::Format_Jpeg:
         qCWarning(qLCAndroidCameraFrame)
-                << "FFMpeg HW Mediacodec does not encode other than YCbCr formats";
+                << "FFmpeg HW Mediacodec does not encode other than YCbCr formats";
         // we still parse it to preview the frame
         m_image = QImage::fromData(buffer[0], bufferSize[0]);
         m_planes[0].rowStride = m_image.bytesPerLine();
@@ -159,10 +175,6 @@ bool QAndroidCameraFrame::parse(const QJniObject &frame)
 
     long timestamp = frame.callMethod<jlong>("getTimestamp");
     m_timestamp = timestamp / 1000;
-
-    int width = frame.callMethod<jint>("getWidth");
-    int height = frame.callMethod<jint>("getHeight");
-    m_size = QSize(width, height);
 
     return true;
 }
@@ -192,6 +204,13 @@ QAndroidCameraFrame::~QAndroidCameraFrame()
     QJniEnvironment jniEnv;
     if (m_frame)
         jniEnv->DeleteGlobalRef(m_frame);
+
+    if (isWorkaroundForEmulatorNeeded()) {
+        if (m_pixelFormat == QVideoFrameFormat::Format_YUV420P) {
+            for (int i = 0; i < 3; ++i)
+                delete[] m_planes[i].data;
+        }
+    }
 }
 
 QT_END_NAMESPACE

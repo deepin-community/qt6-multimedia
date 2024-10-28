@@ -15,8 +15,8 @@
 // We mean it.
 //
 
-#include <QtMultimedia/qvideoframe.h>
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
+#include <private/qcore_mac_p.h>
 
 #include <QtCore/qobject.h>
 #include <QtCore/qmutex.h>
@@ -30,17 +30,16 @@
 QT_BEGIN_NAMESPACE
 
 struct AVFMetalTexture;
-class AVFVideoBuffer : public QAbstractVideoBuffer
+class AVFVideoBuffer : public QHwVideoBuffer
 {
 public:
     AVFVideoBuffer(AVFVideoSinkInterface *sink, CVImageBufferRef buffer);
     ~AVFVideoBuffer();
 
-    QVideoFrame::MapMode mapMode() const { return m_mode; }
     MapData map(QVideoFrame::MapMode mode);
     void unmap();
 
-    virtual quint64 textureHandle(int plane) const;
+    virtual quint64 textureHandle(QRhi *, int plane) const;
 
     QVideoFrameFormat videoFormat() const { return m_format; }
 
@@ -48,7 +47,7 @@ private:
     AVFVideoSinkInterface *sink = nullptr;
 
     mutable CVMetalTextureRef cvMetalTexture[3] = {};
-
+    mutable QCFType<CVMetalTextureCacheRef> metalCache;
 #if defined(Q_OS_MACOS)
     mutable CVOpenGLTextureRef cvOpenGLTexture = nullptr;
 #elif defined(Q_OS_IOS)

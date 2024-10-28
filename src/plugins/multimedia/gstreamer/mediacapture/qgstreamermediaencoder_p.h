@@ -16,14 +16,15 @@
 // We mean it.
 //
 
-#include <private/qplatformmediarecorder_p.h>
-#include "qgstreamermediacapture_p.h"
-#include "qgstreamermetadata_p.h"
+#include <mediacapture/qgstreamermediacapture_p.h>
+#include <common/qgstreamermetadata_p.h>
+#include <common/qgst_bus_p.h>
 
+#include <QtMultimedia/private/qplatformmediarecorder_p.h>
 #include <QtCore/qurl.h>
 #include <QtCore/qdir.h>
-#include <qelapsedtimer.h>
-#include <qtimer.h>
+#include <QtCore/qelapsedtimer.h>
+#include <QtCore/qtimer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -33,7 +34,7 @@ class QGstreamerMessage;
 class QGstreamerMediaEncoder : public QPlatformMediaRecorder, QGstreamerBusMessageFilter
 {
 public:
-    QGstreamerMediaEncoder(QMediaRecorder *parent);
+    explicit QGstreamerMediaEncoder(QMediaRecorder *parent);
     virtual ~QGstreamerMediaEncoder();
 
     bool isLocationWritable(const QUrl &sink) const override;
@@ -56,7 +57,7 @@ private:
 
 private:
     struct PauseControl {
-        PauseControl(QPlatformMediaRecorder &encoder) : encoder(encoder) {}
+        explicit PauseControl(QPlatformMediaRecorder &encoder) : encoder(encoder) { }
 
         GstPadProbeReturn processBuffer(QGstPad pad, GstPadProbeInfo *info);
         void installOn(QGstPad pad);
@@ -76,10 +77,10 @@ private:
     void finalize();
 
     QGstreamerMediaCapture *m_session = nullptr;
-    QGstreamerMetaData m_metaData;
+    QMediaMetaData m_metaData;
     QTimer signalDurationChangedTimer;
 
-    QGstPipeline gstPipeline;
+    QGstPipeline capturePipeline;
     QGstBin gstEncoder;
     QGstElement gstFileSink;
 

@@ -15,11 +15,10 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaglobal_p.h>
-#include <private/qabstractvideobuffer_p.h>
+#include <private/qhwvideobuffer_p.h>
 #include <QtCore/qvariant.h>
 
-#include <qgst_p.h>
+#include <common/qgst_p.h>
 #include <gst/video/video.h>
 
 QT_BEGIN_NAMESPACE
@@ -27,31 +26,25 @@ class QVideoFrameFormat;
 class QGstreamerVideoSink;
 class QOpenGLContext;
 
-class Q_MULTIMEDIA_EXPORT QGstVideoBuffer : public QAbstractVideoBuffer
+class QGstVideoBuffer final : public QHwVideoBuffer
 {
 public:
-
-    QGstVideoBuffer(GstBuffer *buffer, const GstVideoInfo &info, QGstreamerVideoSink *sink,
+    QGstVideoBuffer(QGstBufferHandle buffer, const GstVideoInfo &info, QGstreamerVideoSink *sink,
                     const QVideoFrameFormat &frameFormat, QGstCaps::MemoryFormat format);
-    QGstVideoBuffer(GstBuffer *buffer, const QVideoFrameFormat &format, const GstVideoInfo &info)
-        : QGstVideoBuffer(buffer, info, nullptr, format, QGstCaps::CpuMemory)
-    {}
     ~QGstVideoBuffer();
-
-    GstBuffer *buffer() const { return m_buffer; }
-    QVideoFrame::MapMode mapMode() const override;
 
     MapData map(QVideoFrame::MapMode mode) override;
     void unmap() override;
 
-    virtual std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *) override;
+    std::unique_ptr<QVideoFrameTextures> mapTextures(QRhi *) override;
+
 private:
-    QGstCaps::MemoryFormat memoryFormat = QGstCaps::CpuMemory;
-    QVideoFrameFormat m_frameFormat;
+    const QGstCaps::MemoryFormat memoryFormat = QGstCaps::CpuMemory;
+    const QVideoFrameFormat m_frameFormat;
     QRhi *m_rhi = nullptr;
     mutable GstVideoInfo m_videoInfo;
-    mutable GstVideoFrame m_frame;
-    GstBuffer *m_buffer = nullptr;
+    mutable GstVideoFrame m_frame{};
+    const QGstBufferHandle m_buffer;
     QVideoFrame::MapMode m_mode = QVideoFrame::NotMapped;
     Qt::HANDLE eglDisplay = nullptr;
     QFunctionPointer eglImageTargetTexture2D = nullptr;

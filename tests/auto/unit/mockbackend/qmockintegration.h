@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #ifndef QMOCKINTEGRATION_H
 #define QMOCKINTEGRATION_H
@@ -29,6 +29,7 @@ class QMockSurfaceCapture;
 class QMockIntegration : public QPlatformMediaIntegration
 {
 public:
+    QMockIntegration();
     ~QMockIntegration();
 
     static QMockIntegration *instance()
@@ -66,9 +67,11 @@ public:
     QMockSurfaceCapture *lastScreenCapture() { return m_lastScreenCapture; }
     QMockSurfaceCapture *lastWindowCapture() { return m_lastWindowCapture; }
 
+protected:
+    QPlatformVideoDevices *createVideoDevices() override;
+    std::unique_ptr<QPlatformMediaDevices> createMediaDevices() override;
+
 private:
-    friend class QMockIntegrationFactory;
-    QMockIntegration();
 
     Flags m_flags = {};
     QMockMediaPlayer *m_lastPlayer = nullptr;
@@ -83,27 +86,17 @@ private:
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QMockIntegration::Flags);
 
-class QMockIntegrationFactory
-{
-public:
-    QMockIntegrationFactory() { QMockIntegration::setPlatformFactory(std::ref(*this)); }
+#define Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN          \
+    Q_IMPORT_PLUGIN(MockMultimediaPlugin)        \
+    struct EnableMockPlugin                      \
+    {                                            \
+        EnableMockPlugin()                       \
+        {                                        \
+            qputenv("QT_MEDIA_BACKEND", "mock"); \
+        }                                        \
+    };                                           \
+    static EnableMockPlugin s_mockMultimediaPluginEnabler;
 
-    ~QMockIntegrationFactory() { QMockIntegration::setPlatformFactory(nullptr); }
-
-    std::unique_ptr<QPlatformMediaIntegration> operator()()
-    {
-        Q_ASSERT(!m_wasRun);
-        m_wasRun = true;
-        return std::unique_ptr<QPlatformMediaIntegration>(new QMockIntegration);
-    }
-
-    bool wasRun() const { return m_wasRun; }
-
-    Q_DISABLE_COPY(QMockIntegrationFactory);
-
-private:
-    bool m_wasRun = false;
-};
 
 QT_END_NAMESPACE
 

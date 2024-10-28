@@ -1,6 +1,22 @@
---- a/src/spatialaudio/CMakeLists.txt
-+++ b/src/spatialaudio/CMakeLists.txt
-@@ -11,7 +11,7 @@ qt_internal_add_module(SpatialAudio
+--- qt6-multimedia-6.8.0.orig/src/resonance-audio/CMakeLists.txt
++++ qt6-multimedia-6.8.0/src/resonance-audio/CMakeLists.txt
+@@ -211,11 +211,11 @@ qt_internal_add_3rdparty_library(Bundled
+         ${RA_SOURCE_DIR}
+         ${PFFFT_DIR}
+         ${SADIE_HRTFS_DIR}
+-        ../3rdparty/eigen
++        /usr/include/eigen3
+     ATTRIBUTION_FILE_DIR_PATHS
+         ${RA_TOPLEVEL_DIR}
+         ${PFFFT_DIR}
+-        ../3rdparty/eigen
++        /usr/include/eigen3
+ )
+ 
+ # Required by pffft on certain PowerPC archs
+--- qt6-multimedia-6.8.0.orig/src/spatialaudio/CMakeLists.txt
++++ qt6-multimedia-6.8.0/src/spatialaudio/CMakeLists.txt
+@@ -14,7 +14,7 @@ qt_internal_add_module(SpatialAudio
          "../3rdparty/resonance-audio/resonance_audio"
          "../3rdparty/resonance-audio"
          "../resonance-audio"
@@ -9,14 +25,4 @@
      LIBRARIES
          Qt::MultimediaPrivate
          Qt::BundledResonanceAudio
---- a/src/resonance-audio/CMakeLists.txt
-+++ b/src/resonance-audio/CMakeLists.txt
-@@ -204,7 +204,7 @@ qt_internal_add_3rdparty_library(Bundled
-         ${RA_SOURCE_DIR}
-         ${PFFFT_DIR}
-         ${SADIE_HRTFS_DIR}
--        ../3rdparty/eigen
-+        /usr/include/eigen3
- )
 
- # Required by pffft on certain PowerPC archs

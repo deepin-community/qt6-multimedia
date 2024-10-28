@@ -1,5 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QDebug>
@@ -12,12 +12,12 @@
 #include <qaudiosource.h>
 #include <qmediacapturesession.h>
 
-//TESTED_COMPONENT=src/multimedia
-
 #include "qmockmediacapturesession.h"
 #include "qmockintegration.h"
 
 QT_USE_NAMESPACE
+
+Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
 class tst_QAudioRecorder: public QObject
 {
@@ -34,7 +34,6 @@ private slots:
 
 private:
     QMediaRecorder *encoder = nullptr;
-    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 void tst_QAudioRecorder::init()

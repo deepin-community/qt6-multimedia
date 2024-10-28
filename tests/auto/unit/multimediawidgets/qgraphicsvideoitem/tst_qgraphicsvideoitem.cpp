@@ -1,7 +1,5 @@
 // Copyright (C) 2016 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
-
-//TESTED_COMPONENT=src/multimedia
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtmultimediaglobal.h>
 #include "qgraphicsvideoitem.h"
@@ -19,6 +17,9 @@
 #include <qmockintegration.h>
 
 QT_USE_NAMESPACE
+
+Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
+
 class tst_QGraphicsVideoItem : public QObject
 {
     Q_OBJECT
@@ -41,9 +42,6 @@ private slots:
     void boundingRect();
 
     void paint();
-
-public:
-    QMockIntegrationFactory mockIntegrationFactory;
 };
 
 class QtTestGraphicsVideoItem : public QGraphicsVideoItem
@@ -216,7 +214,7 @@ void tst_QGraphicsVideoItem::nativeSize()
 
     QCOMPARE(item.nativeSize(), QSizeF());
 
-    QSignalSpy spy(&item, SIGNAL(nativeSizeChanged(QSizeF)));
+    QSignalSpy spy(&item, &QGraphicsVideoItem::nativeSizeChanged);
 
     QVideoFrameFormat format(frameSize, QVideoFrameFormat::Format_ARGB8888);
     format.setViewport(viewport);

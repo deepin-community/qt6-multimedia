@@ -18,6 +18,7 @@
 #include <QtQuick/qsgnode.h>
 #include <private/qtmultimediaquickglobal_p.h>
 #include "private/qvideotexturehelper_p.h"
+#include "private/qmultimediautils_p.h"
 
 #include <QtMultimedia/qvideoframe.h>
 #include <QtMultimedia/qvideoframeformat.h>
@@ -27,18 +28,18 @@ QT_BEGIN_NAMESPACE
 
 class QSGVideoMaterial;
 class QQuickVideoOutput;
-class QQuickTextNode;
+class QSGInternalTextNode;
 
 class QSGVideoNode : public QSGGeometryNode
 {
 public:
-    QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &format);
+    QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &videoFormat);
     ~QSGVideoNode();
 
-    QVideoFrameFormat::PixelFormat pixelFormat() const {
-        return m_format.pixelFormat();
-    }
+    QVideoFrameFormat::PixelFormat pixelFormat() const { return m_videoFormat.pixelFormat(); }
     void setCurrentFrame(const QVideoFrame &frame);
+    void setSurfaceFormat(const QRhiSwapChain::Format surfaceFormat);
+    void setHdrInfo(const QRhiSwapChainHdrInfo &hdrInfo);
 
     void setTexturedRectGeometry(const QRectF &boundingRect, const QRectF &textureRect, int orientation);
 
@@ -50,14 +51,13 @@ private:
     QRectF m_rect;
     QRectF m_textureRect;
     int m_orientation = -1;
-    int m_frameOrientation = -1;
-    bool m_frameMirrored = false;
+    NormalizedVideoTransformation m_frameTransformation;
 
-    QVideoFrameFormat m_format;
+    QVideoFrameFormat m_videoFormat;
     QSGVideoMaterial *m_material = nullptr;
 
     QVideoTextureHelper::SubtitleLayout m_subtitleLayout;
-    QQuickTextNode *m_subtitleTextNode = nullptr;
+    QSGInternalTextNode *m_subtitleTextNode = nullptr;
 };
 
 QT_END_NAMESPACE

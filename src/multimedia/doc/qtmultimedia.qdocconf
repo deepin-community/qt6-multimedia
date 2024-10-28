@@ -1,6 +1,5 @@
 include($QT_INSTALL_DOCS/global/qt-module-defaults.qdocconf)
 include($QT_INSTALL_DOCS/config/exampleurl-qtmultimedia.qdocconf)
-include(../../../examples/multimedia/video/mediaplayer/doc/qmlmediaplayer.qdocconf)
 
 project                 = QtMultimedia
 description             = Qt Multimedia Documentation
@@ -80,7 +79,4 @@ manifestmeta.highlighted.names = \
 manifestmeta.highlighted.names += "QtMultimedia/QML Camera Application"
 
 # Fail the documentation build if there are more warnings than the limit
-
-warninglimit = 2
-# examples/multimedia/declarative-camera/doc/src/declarative-camera.qdoc:4: (qdoc) warning: Missing image: qml-declarative-portrait.png
-# examples/multimedia/declarative-camera/doc/src/declarative-camera.qdoc:4: (qdoc) warning: Missing image: FlashControls.png
+warninglimit = 0
