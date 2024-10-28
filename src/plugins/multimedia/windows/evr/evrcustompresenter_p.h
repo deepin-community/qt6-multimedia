@@ -24,6 +24,7 @@
 #include <qvideosink.h>
 #include <qpointer.h>
 #include <private/qcomptr_p.h>
+#include "evrhelpers_p.h"
 
 #include <d3d9.h>
 #include <dxva2api.h>
@@ -109,15 +110,11 @@ public:
     void setFrameRate(const MFRatio &fps);
     void setClockRate(float rate) { m_playbackRate = rate; }
 
-    const LONGLONG &lastSampleTime() const { return m_lastSampleTime; }
-    const LONGLONG &frameDuration() const { return m_perFrameInterval; }
-
     HRESULT startScheduler(ComPtr<IMFClock> clock);
     HRESULT stopScheduler();
 
-    HRESULT scheduleSample(IMFSample *sample, bool presentNow);
+    HRESULT scheduleSample(const ComPtr<IMFSample> &sample, bool presentNow);
     HRESULT processSamplesInQueue(LONG *nextSleep);
-    HRESULT processSample(IMFSample *sample, LONG *nextSleep);
     HRESULT flush();
 
     bool areSamplesScheduled();
@@ -127,6 +124,7 @@ public:
 
 private:
     DWORD schedulerThreadProcPrivate();
+    bool isSampleReadyToPresent(IMFSample *sample, LONG *pNextSleep) const;
 
     EVRCustomPresenter *m_presenter;
 
@@ -135,14 +133,12 @@ private:
     ComPtr<IMFClock> m_clock; // Presentation clock. Can be NULL.
 
     DWORD m_threadID;
-    HANDLE m_schedulerThread;
-    HANDLE m_threadReadyEvent;
-    HANDLE m_flushEvent;
+    ThreadHandle m_schedulerThread;
+    EventHandle m_threadReadyEvent;
+    EventHandle m_flushEvent;
 
     float m_playbackRate;
-    MFTIME m_perFrameInterval; // Duration of each frame.
-    LONGLONG m_perFrame_1_4th; // 1/4th of the frame duration.
-    MFTIME m_lastSampleTime; // Most recent sample time.
+    MFTIME m_perFrame_1_4th; // 1/4th of the frame duration.
 
     QMutex m_mutex;
 };
@@ -157,8 +153,8 @@ public:
     HRESULT initialize(QList<ComPtr<IMFSample>> &&samples);
     HRESULT clear();
 
-    HRESULT getSample(IMFSample **sample);
-    HRESULT returnSample(IMFSample *sample);
+    ComPtr<IMFSample> takeSample();
+    void returnSample(const ComPtr<IMFSample> &sample);
 
 private:
     QMutex m_mutex;
@@ -244,7 +240,7 @@ public:
 
     void startSurface();
     void stopSurface();
-    void presentSample(IMFSample *sample);
+    void presentSample(const ComPtr<IMFSample> &sample);
 
     bool event(QEvent *) override;
 
@@ -297,15 +293,15 @@ private:
     // Managing samples
     void processOutputLoop();
     HRESULT processOutput();
-    HRESULT deliverSample(IMFSample *sample, bool repaint);
-    HRESULT trackSample(IMFSample *sample);
+    HRESULT deliverSample(const ComPtr<IMFSample> &sample);
+    HRESULT trackSample(const ComPtr<IMFSample> &sample);
     void releaseResources();
 
     // Frame-stepping
     HRESULT prepareFrameStep(DWORD steps);
     HRESULT startFrameStep();
-    HRESULT deliverFrameStepSample(IMFSample *sample);
-    HRESULT completeFrameStep(IMFSample *sample);
+    HRESULT deliverFrameStepSample(const ComPtr<IMFSample> &sample);
+    HRESULT completeFrameStep(const ComPtr<IMFSample> &sample);
     HRESULT cancelFrameStep();
 
     // Callback when a video sample is released.
@@ -335,7 +331,6 @@ private:
 
     // Rendering state
     bool m_sampleNotify; // Did the mixer signal it has an input sample?
-    bool m_repaint; // Do we need to repaint the last sample?
     bool m_prerolled; // Have we presented at least one sample?
     bool m_endStreaming; // Did we reach the end of the stream (EOS)?
 

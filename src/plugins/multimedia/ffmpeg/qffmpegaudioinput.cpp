@@ -35,8 +35,9 @@ public:
     }
     void setFrameSize(int frameSize)
     {
-        m_bufferSize.storeRelease(frameSize > 0 ? m_format.bytesForFrames(frameSize)
-                                                : DefaultAudioInputBufferSize);
+        m_bufferSize.storeRelease((frameSize > 0 && m_format.isValid())
+                                          ? m_format.bytesForFrames(frameSize)
+                                          : DefaultAudioInputBufferSize);
     }
     void setRunning(bool r) {
         QMutexLocker locker(&m_mutex);
@@ -143,13 +144,16 @@ QFFmpegAudioInput::QFFmpegAudioInput(QAudioInput *qq)
     qRegisterMetaType<QAudioBuffer>();
 
     inputThread = std::make_unique<QThread>();
-    audioIO = std::make_unique<QFFmpeg::AudioSourceIO>(this);
+    audioIO = new QFFmpeg::AudioSourceIO(this);
     audioIO->moveToThread(inputThread.get());
     inputThread->start();
 }
 
 QFFmpegAudioInput::~QFFmpegAudioInput()
 {
+    // Ensure that COM is uninitialized by nested QWindowsResampler
+    // on the same thread that initialized it.
+    audioIO->deleteLater();
     inputThread->exit();
     inputThread->wait();
 }

@@ -8,6 +8,7 @@ qt_internal_add_plugin(QWindowsMediaPlugin
         common/mfmetadata.cpp common/mfmetadata_p.h
         decoder/mfaudiodecodercontrol.cpp decoder/mfaudiodecodercontrol_p.h
         decoder/mfdecodersourcereader.cpp decoder/mfdecodersourcereader_p.h
+        decoder/mfdecodersourcereadercallback.cpp decoder/mfdecodersourcereadercallback_p.h
         evr/evrcustompresenter.cpp evr/evrcustompresenter_p.h
         evr/evrd3dpresentengine.cpp evr/evrd3dpresentengine_p.h
         evr/evrhelpers.cpp evr/evrhelpers_p.h
@@ -17,9 +18,7 @@ qt_internal_add_plugin(QWindowsMediaPlugin
         player/mfevrvideowindowcontrol.cpp player/mfevrvideowindowcontrol_p.h
         player/mfplayercontrol.cpp player/mfplayercontrol_p.h
         player/mfplayersession.cpp player/mfplayersession_p.h
-        player/mftvideo.cpp player/mftvideo_p.h
         player/mfvideorenderercontrol.cpp player/mfvideorenderercontrol_p.h
-        player/samplegrabber.cpp player/samplegrabber_p.h
         mediacapture/qwindowscamera.cpp
         mediacapture/qwindowscamera_p.h
         mediacapture/qwindowsimagecapture.cpp

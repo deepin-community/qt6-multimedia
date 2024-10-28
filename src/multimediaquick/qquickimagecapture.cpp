@@ -10,7 +10,7 @@ QT_BEGIN_NAMESPACE
 
 /*!
     \qmltype ImageCapture
-    \instantiates QQuickImageCapture
+    \nativetype QQuickImageCapture
     \brief An interface for capturing camera images.
     \ingroup multimedia_qml
     \inqmlmodule QtMultimedia
@@ -56,7 +56,7 @@ QT_BEGIN_NAMESPACE
 QQuickImageCapture::QQuickImageCapture(QObject *parent)
     : QImageCapture(parent)
 {
-    connect(this, SIGNAL(imageCaptured(int,QImage)), this, SLOT(_q_imageCaptured(int,QImage)));
+    connect(this, &QImageCapture::imageCaptured, this, &QQuickImageCapture::_q_imageCaptured);
 }
 
 QQuickImageCapture::~QQuickImageCapture() = default;
@@ -140,46 +140,45 @@ void QQuickImageCapture::saveToFile(const QUrl &location) const
 
 void QQuickImageCapture::_q_imageCaptured(int id, const QImage &preview)
 {
-    QString previewId = QString::fromLatin1("preview_%1").arg(id);
+    QString previewId = QStringLiteral("preview_%1").arg(id);
     QQuickImagePreviewProvider::registerPreview(previewId, preview);
-    m_capturedImagePath = QString::fromLatin1("image://camera/%2").arg(previewId);
+    m_capturedImagePath = QStringLiteral("image://camera/%2").arg(previewId);
     m_lastImage = preview;
     emit previewChanged();
 }
 
 /*!
-    \qmlsignal QtMultimedia::ImageCapture::errorOccurred(requestId, error, message)
+    \qmlsignal QtMultimedia::ImageCapture::errorOccurred(id, error, errorString)
 
-    This signal is emitted when an error occurs during capture with \a requestId.
+    This signal is emitted when an error occurs during capture with requested \a id.
     \a error is an enumeration of type ImageCapture::Error.
-    A descriptive message is available in \a message.
+    A descriptive message is available in \a errorString.
 */
 
 /*!
-    \qmlsignal QtMultimedia::ImageCapture::imageCaptured(requestId, previewImage)
+    \qmlsignal QtMultimedia::ImageCapture::imageCaptured(requestId, preview)
 
-    This signal is emitted when an image with \a requestId has been captured
-    but not yet saved to the filesystem.  The \a previewImage
+    This signal is emitted when an image with requested id \a requestId has been captured
+    but not yet saved to the filesystem.  The \a preview
     parameter is the captured image.
 
     \sa imageSaved, preview
 */
 
 /*!
-    \qmlsignal QtMultimedia::ImageCapture::imageSaved(requestId, path)
+    \qmlsignal QtMultimedia::ImageCapture::imageSaved(id, fileName)
 
-    This signal is emitted after the image with \a requestId has been written to the filesystem.
-    The \a path is a local file path, not a URL.
+    This signal is emitted after the image with requested \a id has been written to the filesystem.
+    The \a fileName is a local file path, not a URL.
 
     \sa imageCaptured
 */
 
 
 /*!
-    \qmlsignal QtMultimedia::ImageCapture::imageMetadataAvailable(requestId, key, value)
+    \qmlsignal QtMultimedia::ImageCapture::imageMetadataAvailable(id, metaData)
 
-    This signal is emitted when the image with \a requestId has new metadata
-    available with the key \a key and value \a value.
+    This signal is emitted when the image with requested \a id has new \a metaData.
 
     \sa imageCaptured
 */

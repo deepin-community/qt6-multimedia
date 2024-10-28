@@ -61,7 +61,6 @@ void QSpatialSound::setPosition(QVector3D pos)
     d->pos = pos;
     if (ep)
         ep->resonanceAudio->api->SetSourcePosition(d->sourceId, pos.x(), pos.y(), pos.z());
-    d->updateRoomEffects();
     emit positionChanged();
 }
 
@@ -173,6 +172,8 @@ void QSpatialSoundPrivate::updateRoomEffects()
     if (!ep->currentRoom)
         return;
     auto *rp = QAudioRoomPrivate::get(ep->currentRoom);
+    if (!rp)
+        return;
 
     QVector3D roomDim2 = ep->currentRoom->dimensions()/2.;
     QVector3D roomPos = ep->currentRoom->position();
@@ -560,13 +561,16 @@ void QSpatialSound::setEngine(QAudioEngine *engine)
 {
     if (d->engine == engine)
         return;
-    auto *ep = QAudioEnginePrivate::get(engine);
 
+    // Remove self from old engine (if necessary)
+    auto *ep = QAudioEnginePrivate::get(d->engine);
     if (ep)
         ep->removeSpatialSound(this);
+
     d->engine = engine;
 
-    ep = QAudioEnginePrivate::get(engine);
+    // Add self to new engine if necessary
+    ep = QAudioEnginePrivate::get(d->engine);
     if (ep) {
         ep->addSpatialSound(this);
         ep->resonanceAudio->api->SetSourcePosition(d->sourceId, d->pos.x(), d->pos.y(), d->pos.z());

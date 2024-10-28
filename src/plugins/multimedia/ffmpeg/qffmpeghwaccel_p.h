@@ -16,7 +16,8 @@
 
 #include "qffmpeg_p.h"
 #include "qvideoframeformat.h"
-#include <private/qabstractvideobuffer_p.h>
+#include "qabstractvideobuffer.h"
+
 #include <qshareddata.h>
 #include <memory>
 #include <functional>
@@ -39,7 +40,7 @@ class TextureSet {
 public:
     // ### Should add QVideoFrameFormat::PixelFormat here
     virtual ~TextureSet() {}
-    virtual qint64 textureHandle(int /*plane*/) { return 0; }
+    virtual qint64 textureHandle(QRhi *, int /*plane*/) { return 0; }
 };
 
 class TextureConverterBackend
@@ -59,11 +60,10 @@ class TextureConverter
     class Data final
     {
     public:
-        ~Data();
         QAtomicInt ref = 0;
         QRhi *rhi = nullptr;
         AVPixelFormat format = AV_PIX_FMT_NONE;
-        TextureConverterBackend *backend = nullptr;
+        std::unique_ptr<TextureConverterBackend> backend;
     };
 public:
     TextureConverter(QRhi *rhi = nullptr);
@@ -82,6 +82,9 @@ private:
     QExplicitlySharedDataPointer<Data> d;
 };
 
+class HWAccel;
+using HWAccelUPtr = std::unique_ptr<HWAccel>;
+
 class HWAccel
 {
     AVBufferUPtr m_hwDeviceContext;
@@ -93,15 +96,15 @@ class HWAccel
 public:
     ~HWAccel();
 
-    static std::unique_ptr<HWAccel> create(AVHWDeviceType deviceType);
+    static HWAccelUPtr create(AVHWDeviceType deviceType);
 
-    static std::pair<const AVCodec *, std::unique_ptr<HWAccel>>
+    static std::pair<const AVCodec *, HWAccelUPtr>
     findEncoderWithHwAccel(AVCodecID id,
-                           const std::function<bool(const HWAccel &)>& hwAccelPredicate = nullptr);
+                           const std::function<bool(const HWAccel &)> &hwAccelPredicate = nullptr);
 
-    static std::pair<const AVCodec *, std::unique_ptr<HWAccel>>
+    static std::pair<const AVCodec *, HWAccelUPtr>
     findDecoderWithHwAccel(AVCodecID id,
-                           const std::function<bool(const HWAccel &)>& hwAccelPredicate = nullptr);
+                           const std::function<bool(const HWAccel &)> &hwAccelPredicate = nullptr);
 
     AVHWDeviceType deviceType() const;
 
@@ -109,6 +112,8 @@ public:
     AVHWDeviceContext *hwDeviceContext() const;
     AVPixelFormat hwFormat() const;
     const AVHWFramesConstraints *constraints() const;
+
+    bool matchesSizeContraints(QSize size) const;
 
     void createFramesContext(AVPixelFormat swFormat, const QSize &size);
     AVBufferRef *hwFramesContextAsBuffer() const { return m_hwFramesContext.get(); }
@@ -122,6 +127,8 @@ public:
 private:
     HWAccel(AVBufferUPtr hwDeviceContext) : m_hwDeviceContext(std::move(hwDeviceContext)) { }
 };
+
+AVFrameUPtr copyFromHwPool(AVFrameUPtr frame);
 
 }
 

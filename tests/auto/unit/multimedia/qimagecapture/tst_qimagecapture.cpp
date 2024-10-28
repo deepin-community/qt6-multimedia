@@ -1,5 +1,5 @@
 // Copyright (C) 2021 The Qt Company Ltd.
-// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only WITH Qt-GPL-exception-1.0
+// SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <QtTest/QtTest>
 #include <QDebug>
@@ -15,15 +15,11 @@
 
 QT_USE_NAMESPACE
 
+Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
+
 class tst_QImageCapture: public QObject
 {
     Q_OBJECT
-
-public slots:
-    void initTestCase();
-    void init();
-    void cleanup();
-    void cleanupTestCase();
 
 private slots:
     void constructor();
@@ -38,22 +34,7 @@ private slots:
     void imageExposed();
     void imageSaved();
     void readyForCaptureChanged();
-
-private:
-    QMockIntegrationFactory mockIntegrationFactory;
 };
-
-void tst_QImageCapture::initTestCase() { }
-
-void tst_QImageCapture::init()
-{
-}
-
-void tst_QImageCapture::cleanup()
-{
-}
-
-void tst_QImageCapture::cleanupTestCase() { }
 
 void tst_QImageCapture::constructor()
 {
@@ -168,7 +149,7 @@ void tst_QImageCapture::errors()
         session.setImageCapture(&imageCapture);
 
         QVERIFY(imageCapture.isAvailable() == true);
-        imageCapture.captureToFile(QString::fromLatin1("/dev/null"));
+        imageCapture.captureToFile(QStringLiteral("/dev/null"));
         QCOMPARE(imageCapture.error(), QImageCapture::NotReadyError);
         QVERIFY(!imageCapture.errorString().isEmpty());
     }
@@ -197,7 +178,7 @@ void tst_QImageCapture::error()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy spy(&imageCapture, SIGNAL(errorOccurred(int,QImageCapture::Error,QString)));
+    QSignalSpy spy(&imageCapture, &QImageCapture::errorOccurred);
     imageCapture.captureToFile();
     QTest::qWait(30);
     QVERIFY(spy.size() == 1);
@@ -215,7 +196,7 @@ void tst_QImageCapture::imageCaptured()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy spy(&imageCapture, SIGNAL(imageCaptured(int,QImage)));
+    QSignalSpy spy(&imageCapture, &QImageCapture::imageCaptured);
     QVERIFY(imageCapture.isAvailable() == true);
     QVERIFY(imageCapture.isReadyForCapture() == false);
     camera.start();
@@ -238,7 +219,7 @@ void tst_QImageCapture::imageExposed()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy spy(&imageCapture, SIGNAL(imageExposed(int)));
+    QSignalSpy spy(&imageCapture, &QImageCapture::imageExposed);
     QVERIFY(imageCapture.isAvailable() == true);
     QVERIFY(imageCapture.isReadyForCapture() == false);
     camera.start();
@@ -259,11 +240,11 @@ void tst_QImageCapture::imageSaved()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy spy(&imageCapture, SIGNAL(imageSaved(int,QString)));
+    QSignalSpy spy(&imageCapture, &QImageCapture::imageSaved);
     QVERIFY(imageCapture.isAvailable() == true);
     QVERIFY(imageCapture.isReadyForCapture() == false);
     camera.start();
-    imageCapture.captureToFile(QString::fromLatin1("/usr/share"));
+    imageCapture.captureToFile(QStringLiteral("/usr/share"));
     QTRY_VERIFY(imageCapture.isReadyForCapture());
 
     QVERIFY(spy.size() == 1);
@@ -281,7 +262,7 @@ void tst_QImageCapture::readyForCaptureChanged()
     session.setCamera(&camera);
     session.setImageCapture(&imageCapture);
 
-    QSignalSpy spy(&imageCapture, SIGNAL(readyForCaptureChanged(bool)));
+    QSignalSpy spy(&imageCapture, &QImageCapture::readyForCaptureChanged);
     QVERIFY(imageCapture.isReadyForCapture() == false);
     imageCapture.captureToFile();
     QTest::qWait(100);

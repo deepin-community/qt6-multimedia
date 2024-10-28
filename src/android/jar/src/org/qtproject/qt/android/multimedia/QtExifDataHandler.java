@@ -9,23 +9,26 @@ import android.util.Log;
 
 import java.io.IOException;
 
-public class QtExifDataHandler {
+class QtExifDataHandler {
 
     private int mFlashFired = 0;
-    private Long mExposureTime = 0L;
+    private long mExposureTime = 0L;
     private float mFocalLength = 0;
     private static String mModel = Build.MANUFACTURER + " " + Build.MODEL;
 
-    public QtExifDataHandler(CaptureResult r)
+    QtExifDataHandler(CaptureResult r)
     {
-        if (r.get(CaptureResult.FLASH_STATE) == CaptureResult.FLASH_STATE_FIRED)
+        Integer flash = r.get(CaptureResult.FLASH_STATE);
+        if (flash != null && flash == CaptureResult.FLASH_STATE_FIRED)
             mFlashFired = 1;
 
-        mExposureTime = r.get(CaptureResult.SENSOR_EXPOSURE_TIME)/1000000000;
+        Long exposureTime = r.get(CaptureResult.SENSOR_EXPOSURE_TIME);
+        if (exposureTime != null)
+            mExposureTime = exposureTime/1000000000;
         mFocalLength = r.get(CaptureResult.LENS_FOCAL_LENGTH);
     }
 
-    public void save(String path)
+    void save(String path)
     {
         ExifInterface exif;
         try {
@@ -35,12 +38,8 @@ public class QtExifDataHandler {
             return;
         }
         exif.setAttribute(ExifInterface.TAG_FLASH, String.valueOf(mFlashFired));
-
-        if (mExposureTime != null)
-            exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, String.valueOf(mExposureTime));
-
+        exif.setAttribute(ExifInterface.TAG_EXPOSURE_TIME, String.valueOf(mExposureTime));
         exif.setAttribute(ExifInterface.TAG_FOCAL_LENGTH, String.valueOf(mFocalLength));
-
         exif.setAttribute(ExifInterface.TAG_MODEL, mModel);
 
         try {

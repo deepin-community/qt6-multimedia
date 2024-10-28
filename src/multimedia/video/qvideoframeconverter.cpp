@@ -4,6 +4,9 @@
 #include "qvideoframeconverter_p.h"
 #include "qvideoframeconversionhelper_p.h"
 #include "qvideoframeformat.h"
+#include "qvideoframe_p.h"
+#include "qmultimediautils_p.h"
+#include "qabstractvideobuffer.h"
 
 #include <QtCore/qcoreapplication.h>
 #include <QtCore/qsize.h>
@@ -14,7 +17,6 @@
 #include <QtGui/qoffscreensurface.h>
 #include <qpa/qplatformintegration.h>
 #include <private/qvideotexturehelper_p.h>
-#include <private/qabstractvideobuffer_p.h>
 #include <private/qguiapplication_p.h>
 #include <rhi/qrhi.h>
 
@@ -35,11 +37,21 @@ struct State
     QOffscreenSurface *fallbackSurface = nullptr;
 #endif
     bool cpuOnly = false;
+#if defined(Q_OS_ANDROID)
+    QMetaObject::Connection appStateChangedConnection;
+#endif
     ~State() {
+        resetRhi();
+    }
+
+    void resetRhi() {
         delete rhi;
+        rhi = nullptr;
 #if QT_CONFIG(opengl)
         delete fallbackSurface;
+        fallbackSurface = nullptr;
 #endif
+        cpuOnly = false;
     }
 };
 
@@ -104,16 +116,13 @@ static QShader vfcGetShader(const QString &name)
     return shader;
 }
 
-static void rasterTransform(QImage &image, QVideoFrame::RotationAngle rotation,
-                            bool mirrorX, bool mirrorY)
+static void rasterTransform(QImage &image, NormalizedVideoTransformation transformation)
 {
     QTransform t;
-    if (mirrorX)
-        t.scale(-1.f, 1.f);
-    if (rotation != QVideoFrame::Rotation0)
-        t.rotate(float(rotation));
-    if (mirrorY)
-        t.scale(1.f, -1.f);
+    if (transformation.rotation != QtVideo::Rotation::None)
+        t.rotate(qreal(transformation.rotation));
+    if (transformation.xMirrorredAfterRotation)
+        t.scale(-1., 1);
     if (!t.isIdentity())
         image = image.transformed(t);
 }
@@ -159,6 +168,16 @@ static QRhi *initializeRHI(QRhi *videoFrameRhi)
                 if (backend == QRhi::OpenGLES2)
                     params.shareContext = static_cast<const QRhiGles2NativeHandles*>(videoFrameRhi->nativeHandles())->context;
                 g_state.localData().rhi = QRhi::create(QRhi::OpenGLES2, &params);
+
+#if defined(Q_OS_ANDROID)
+                // reset RHI state on application suspension, as this will be invalid after resuming
+                if (!g_state.localData().appStateChangedConnection) {
+                    g_state.localData().appStateChangedConnection = QObject::connect(qApp, &QGuiApplication::applicationStateChanged, qApp, [](auto state) {
+                        if (state == Qt::ApplicationSuspended)
+                            g_state.localData().resetRhi();
+                    });
+                }
+#endif
             }
         }
 #endif
@@ -229,7 +248,7 @@ static bool updateTextures(QRhi *rhi,
     return true;
 }
 
-static QImage convertJPEG(const QVideoFrame &frame, QVideoFrame::RotationAngle rotation, bool mirrorX, bool mirrorY)
+static QImage convertJPEG(const QVideoFrame &frame, const NormalizedVideoTransformation &transform)
 {
     QVideoFrame varFrame = frame;
     if (!varFrame.map(QVideoFrame::ReadOnly)) {
@@ -239,11 +258,11 @@ static QImage convertJPEG(const QVideoFrame &frame, QVideoFrame::RotationAngle r
     QImage image;
     image.loadFromData(varFrame.bits(0), varFrame.mappedBytes(0), "JPG");
     varFrame.unmap();
-    rasterTransform(image, rotation, mirrorX, mirrorY);
+    rasterTransform(image, transform);
     return image;
 }
 
-static QImage convertCPU(const QVideoFrame &frame, QVideoFrame::RotationAngle rotation, bool mirrorX, bool mirrorY)
+static QImage convertCPU(const QVideoFrame &frame, const NormalizedVideoTransformation &transform)
 {
     VideoFrameConvertFunc convert = qConverterForFormat(frame.pixelFormat());
     if (!convert) {
@@ -259,12 +278,20 @@ static QImage convertCPU(const QVideoFrame &frame, QVideoFrame::RotationAngle ro
         QImage image = QImage(varFrame.width(), varFrame.height(), format);
         convert(varFrame, image.bits());
         varFrame.unmap();
-        rasterTransform(image, rotation, mirrorX, mirrorY);
+        rasterTransform(image, transform);
         return image;
     }
 }
 
-QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle rotation, bool mirrorX, bool mirrorY)
+QImage qImageFromVideoFrame(const QVideoFrame &frame, bool forceCpu)
+{
+    // by default, surface transformation is applied, as full transformation is used for presentation only
+    return qImageFromVideoFrame(frame, qNormalizedSurfaceTransformation(frame.surfaceFormat()),
+                                forceCpu);
+}
+
+QImage qImageFromVideoFrame(const QVideoFrame &frame,
+                            const NormalizedVideoTransformation &transformation, bool forceCpu)
 {
 #ifdef Q_OS_DARWIN
     QMacAutoReleasePool releasePool;
@@ -286,26 +313,25 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
         return {};
 
     if (frame.pixelFormat() == QVideoFrameFormat::Format_Jpeg)
-        return convertJPEG(frame, rotation, mirrorX, mirrorY);
+        return convertJPEG(frame, transformation);
+
+    if (forceCpu) // For test purposes
+        return convertCPU(frame, transformation);
 
     QRhi *rhi = nullptr;
 
-    if (frame.videoBuffer())
-        rhi = frame.videoBuffer()->rhi();
+    if (QHwVideoBuffer *buffer = QVideoFramePrivate::hwBuffer(frame))
+        rhi = buffer->rhi();
 
     if (!rhi || rhi->thread() != QThread::currentThread())
         rhi = initializeRHI(rhi);
 
     if (!rhi || rhi->isRecordingFrame())
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
 
     // Do conversion using shaders
 
-    const int rotationIndex = (rotation / 90) % 4;
-
-    QSize frameSize = frame.size();
-    if (rotationIndex % 2)
-        frameSize.transpose();
+    const QSize frameSize = qRotatedFrameSize(frame.size(), frame.surfaceFormat().rotation());
 
     vertexBuffer.reset(rhi->newBuffer(QRhiBuffer::Immutable, QRhiBuffer::VertexBuffer, sizeof(g_quad)));
     vertexBuffer->create();
@@ -322,7 +348,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
     targetTexture.reset(rhi->newTexture(QRhiTexture::RGBA8, frameSize, 1, QRhiTexture::RenderTarget));
     if (!targetTexture->create()) {
         qCDebug(qLcVideoFrameConverter) << "Failed to create target texture. Using CPU conversion.";
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
     }
 
     renderTarget.reset(rhi->newTextureRenderTarget({ { targetTexture.get() } }));
@@ -334,7 +360,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
     QRhi::FrameOpResult r = rhi->beginOffscreenFrame(&cb);
     if (r != QRhi::FrameOpSuccess) {
         qCDebug(qLcVideoFrameConverter) << "Failed to set up offscreen frame. Using CPU conversion.";
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
     }
 
     QRhiResourceUpdateBatch *rub = rhi->nextResourceUpdateBatch();
@@ -345,17 +371,17 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
     auto videoFrameTextures = QVideoTextureHelper::createTextures(frameTmp, rhi, rub, {});
     if (!videoFrameTextures) {
         qCDebug(qLcVideoFrameConverter) << "Failed obtain textures. Using CPU conversion.";
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
     }
 
     if (!updateTextures(rhi, uniformBuffer, textureSampler, shaderResourceBindings,
                         graphicsPipeline, renderPass, frameTmp, videoFrameTextures)) {
         qCDebug(qLcVideoFrameConverter) << "Failed to update textures. Using CPU conversion.";
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
     }
 
-    float xScale = mirrorX ? -1.0 : 1.0;
-    float yScale = mirrorY ? -1.0 : 1.0;
+    float xScale = transformation.xMirrorredAfterRotation ? -1.0 : 1.0;
+    float yScale = 1.f;
 
     if (rhi->isYUpInFramebuffer())
         yScale = -yScale;
@@ -373,7 +399,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
     cb->setViewport({ 0, 0, float(frameSize.width()), float(frameSize.height()) });
     cb->setShaderResources(shaderResourceBindings.get());
 
-    quint32 vertexOffset = quint32(sizeof(float)) * 16 * rotationIndex;
+    const quint32 vertexOffset = quint32(sizeof(float)) * 16 * transformation.rotationIndex;
     const QRhiCommandBuffer::VertexInput vbufBinding(vertexBuffer.get(), vertexOffset);
     cb->setVertexInput(0, 1, &vbufBinding);
     cb->draw(4);
@@ -393,7 +419,7 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
 
     if (!readCompleted) {
         qCDebug(qLcVideoFrameConverter) << "Failed to read back texture. Using CPU conversion.";
-        return convertCPU(frame, rotation, mirrorX, mirrorY);
+        return convertCPU(frame, transformation);
     }
 
     QByteArray *imageData = new QByteArray(readResult.data);
@@ -401,6 +427,38 @@ QImage qImageFromVideoFrame(const QVideoFrame &frame, QVideoFrame::RotationAngle
     return QImage(reinterpret_cast<const uchar *>(imageData->constData()),
                   readResult.pixelSize.width(), readResult.pixelSize.height(),
                   QImage::Format_RGBA8888_Premultiplied, imageCleanupHandler, imageData);
+}
+
+QImage videoFramePlaneAsImage(QVideoFrame &frame, int plane, QImage::Format targetFormat,
+                              QSize targetSize)
+{
+    if (plane >= frame.planeCount())
+        return {};
+
+    if (!frame.map(QVideoFrame::ReadOnly)) {
+        qWarning() << "Cannot map a video frame in ReadOnly mode!";
+        return {};
+    }
+
+    auto frameHandle = QVideoFramePrivate::handle(frame);
+
+    // With incrementing the reference counter, we share the mapped QVideoFrame
+    // with the target QImage. The function imageCleanupFunction is going to adopt
+    // the frameHandle by QVideoFrame and dereference it upon the destruction.
+    frameHandle->ref.ref();
+
+    auto imageCleanupFunction = [](void *data) {
+        QVideoFrame frame = reinterpret_cast<QVideoFramePrivate *>(data)->adoptThisByVideoFrame();
+        Q_ASSERT(frame.isMapped());
+        frame.unmap();
+    };
+
+    const auto bytesPerLine = frame.bytesPerLine(plane);
+    const auto height =
+            bytesPerLine ? qMin(targetSize.height(), frame.mappedBytes(plane) / bytesPerLine) : 0;
+
+    return QImage(reinterpret_cast<const uchar *>(frame.bits(plane)), targetSize.width(), height,
+                  bytesPerLine, targetFormat, imageCleanupFunction, frameHandle);
 }
 
 QT_END_NAMESPACE

@@ -11,26 +11,31 @@ import android.hardware.camera2.CameraCharacteristics;
 import android.hardware.camera2.CameraManager;
 import android.hardware.camera2.CaptureRequest;
 import android.hardware.camera2.params.StreamConfigurationMap;
+import android.media.MediaCodecList;
+import android.media.MediaCodecInfo;
+import android.os.Build;
 import android.util.Range;
 import android.util.Size;
 import android.util.Log;
 
 import java.lang.String;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.WeakHashMap;
 
-public class QtVideoDeviceManager {
+class QtVideoDeviceManager {
 
     CameraManager mCameraManager;
     Map<String, CameraCharacteristics> cache;
 
-    public QtVideoDeviceManager(Context context) {
+    QtVideoDeviceManager(Context context) {
         mCameraManager = (CameraManager) context.getSystemService(Context.CAMERA_SERVICE);
         cache = new WeakHashMap<String, CameraCharacteristics>();
     }
 
-    public CameraCharacteristics getCameraCharacteristics(String cameraId) {
+    CameraCharacteristics getCameraCharacteristics(String cameraId) {
 
         if (cache.containsKey(cameraId))
             return cache.get(cameraId);
@@ -45,7 +50,38 @@ public class QtVideoDeviceManager {
         return null;
     }
 
-    public String[] getCameraIdList() {
+    static private boolean isSoftwareCodec(String longCodecName) {
+        longCodecName = longCodecName.toLowerCase();
+        return longCodecName.startsWith("omx.google.") || longCodecName.startsWith("c2.android.")
+               || !(longCodecName.startsWith("omx.") || longCodecName.startsWith("c2."));
+    }
+
+    private enum CODEC {
+      DECODER,
+      ENCODER
+    }
+    static private String[] getHWVideoCodecs(CODEC expectedType) {
+        MediaCodecList mediaCodecList = new MediaCodecList(MediaCodecList.REGULAR_CODECS);
+        MediaCodecInfo[] mediaCodecInfo = mediaCodecList.getCodecInfos();
+        Set<String> codecs = new HashSet<String>();
+
+        for (MediaCodecInfo codecInfo : mediaCodecInfo) {
+            CODEC currentType = codecInfo.isEncoder() ? CODEC.ENCODER : CODEC.DECODER;
+            if (currentType == expectedType && !isSoftwareCodec(codecInfo.getName())) {
+                String[] supportedTypes = codecInfo.getSupportedTypes();
+                for (String type : supportedTypes) {
+                    if (type.startsWith("video/"))
+                        codecs.add(type.substring(6));
+                }
+            }
+        }
+        return codecs.toArray(new String[codecs.size()]);
+    }
+
+    static String[] getHWVideoDecoders() { return getHWVideoCodecs(CODEC.DECODER); }
+    static String[] getHWVideoEncoders() { return getHWVideoCodecs(CODEC.ENCODER); }
+
+    String[] getCameraIdList() {
         try {
             return mCameraManager.getCameraIdList();
         } catch (Exception e) {
@@ -54,21 +90,21 @@ public class QtVideoDeviceManager {
         return null;
     }
 
-    public int getSensorOrientation(String cameraId) {
+    int getSensorOrientation(String cameraId) {
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
             return 0;
         return characteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
     }
 
-    public int getLensFacing(String cameraId) {
+    int getLensFacing(String cameraId) {
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
             return 0;
         return characteristics.get(CameraCharacteristics.LENS_FACING);
     }
 
-    public String[] getFpsRange(String cameraId) {
+    String[] getFpsRange(String cameraId) {
 
         CameraCharacteristics characteristics =  getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -85,16 +121,28 @@ public class QtVideoDeviceManager {
         return fps;
     }
 
-    public float getMaxZoom(String cameraId) {
+    float[] getZoomRange(String cameraId) {
 
-        float maxZoom = 1.0f;
+        float[] zoomRange = { 1.0f, 1.0f };
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
-        if (characteristics != null)
-            maxZoom = characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
-        return maxZoom;
+        if (characteristics == null)
+            return zoomRange;
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            final Range<Float> range = characteristics.get(CameraCharacteristics.CONTROL_ZOOM_RATIO_RANGE);
+            if (range != null) {
+                zoomRange[0] = range.getLower();
+                zoomRange[1] = range.getUpper();
+            }
+        }
+
+        if (zoomRange[1] == 1.0f)
+            zoomRange[1] = characteristics.get(CameraCharacteristics.SCALER_AVAILABLE_MAX_DIGITAL_ZOOM);
+
+        return zoomRange;
     }
 
-    public Rect getActiveArraySize(String cameraId) {
+    Rect getActiveArraySize(String cameraId) {
         Rect activeArraySize = new Rect();
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics != null)
@@ -102,7 +150,8 @@ public class QtVideoDeviceManager {
         return activeArraySize;
     }
 
-    public String[] getStreamConfigurationsSizes(String cameraId, int imageFormat) {
+    static final int maxResolution = 3840*2160; // 4k resolution
+    String[] getStreamConfigurationsSizes(String cameraId, int imageFormat) {
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -113,16 +162,17 @@ public class QtVideoDeviceManager {
         if (sizes == null)
             return new String[0];
 
-        String[] stream = new String[sizes.length];
+        ArrayList<String> stream = new ArrayList<>();
 
         for (int index = 0; index < sizes.length; index++) {
-            stream[index] = sizes[index].toString();
+            if (sizes[index].getWidth() * sizes[index].getHeight() <= maxResolution)
+                stream.add(sizes[index].toString());
         }
 
-        return stream;
+        return stream.toArray(new String[0]);
     }
 
-    public int stringToControlAEMode(String mode) {
+    int stringToControlAEMode(String mode) {
         switch (mode) {
             case "off":
                 return CaptureRequest.CONTROL_AE_MODE_ON;
@@ -139,7 +189,7 @@ public class QtVideoDeviceManager {
         }
     }
 
-    public String controlAEModeToString(int mode) {
+    String controlAEModeToString(int mode) {
         switch (mode) {
             case CaptureRequest.CONTROL_AE_MODE_ON:
                 return "off";
@@ -157,7 +207,7 @@ public class QtVideoDeviceManager {
         }
     }
 
-    public int[] getSupportedAfModes(String cameraId) {
+    int[] getSupportedAfModes(String cameraId) {
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -166,7 +216,7 @@ public class QtVideoDeviceManager {
         return characteristics.get(CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
     }
 
-    public String[] getSupportedFlashModes(String cameraId) {
+    String[] getSupportedFlashModes(String cameraId) {
 
         CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics == null)
@@ -182,7 +232,24 @@ public class QtVideoDeviceManager {
         return supportedFlashModesList.toArray(ret);
     }
 
-    public boolean isTorchModeSupported(String cameraId) {
+    static boolean isEmulator()
+    {
+        return ((Build.BRAND.startsWith("generic") && Build.DEVICE.startsWith("generic"))
+            || Build.FINGERPRINT.startsWith("generic")
+            || Build.FINGERPRINT.startsWith("unknown")
+            || Build.HARDWARE.contains("goldfish")
+            || Build.HARDWARE.contains("ranchu")
+            || Build.MODEL.contains("google_sdk")
+            || Build.MODEL.contains("Emulator")
+            || Build.MODEL.contains("Android SDK built for x86")
+            || Build.MANUFACTURER.contains("Genymotion")
+            || Build.PRODUCT.contains("sdk")
+            || Build.PRODUCT.contains("vbox86p")
+            || Build.PRODUCT.contains("emulator")
+            || Build.PRODUCT.contains("simulator"));
+    }
+
+    boolean isTorchModeSupported(String cameraId) {
         boolean ret = false;
         final CameraCharacteristics characteristics = getCameraCharacteristics(cameraId);
         if (characteristics != null)

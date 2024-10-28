@@ -5,6 +5,7 @@
 
 #include "qffmpegmediametadata_p.h"
 #include "qffmpegmediaformatinfo_p.h"
+#include "qffmpegioutils_p.h"
 #include "qiodevice.h"
 #include "qdatetime.h"
 #include "qloggingcategory.h"
@@ -49,13 +50,14 @@ static std::optional<qint64> streamDuration(const AVStream &stream)
 static int streamOrientation(const AVStream *stream)
 {
     Q_ASSERT(stream);
+
     using SideDataSize = decltype(AVPacketSideData::size);
-    SideDataSize dataSize = 0;
     constexpr SideDataSize displayMatrixSize = sizeof(int32_t) * 9;
-    const uint8_t *sideData = av_stream_get_side_data(stream, AV_PKT_DATA_DISPLAYMATRIX, &dataSize);
-    if (dataSize < displayMatrixSize)
+    const auto *sideData = streamSideData(stream, AV_PKT_DATA_DISPLAYMATRIX);
+    if (!sideData || sideData->size < displayMatrixSize)
         return 0;
-    auto displayMatrix = reinterpret_cast<const int32_t *>(sideData);
+
+    auto displayMatrix = reinterpret_cast<const int32_t *>(sideData->data);
     auto rotation = static_cast<int>(std::round(av_display_rotation_get(displayMatrix)));
     // Convert counterclockwise rotation angle to clockwise, restricted to 0, 90, 180 and 270
     if (rotation % 90 != 0)
@@ -63,10 +65,29 @@ static int streamOrientation(const AVStream *stream)
     return rotation < 0 ? -rotation % 360 : -rotation % 360 + 360;
 }
 
-QVideoFrame::RotationAngle MediaDataHolder::getRotationAngle() const
+
+static bool colorTransferSupportsHdr(const AVStream *stream)
+{
+    if (!stream)
+        return false;
+
+    const AVCodecParameters *codecPar = stream->codecpar;
+    if (!codecPar)
+        return false;
+
+    const QVideoFrameFormat::ColorTransfer colorTransfer = fromAvColorTransfer(codecPar->color_trc);
+
+    // Assume that content is using HDR if the color transfer supports high
+    // dynamic range. The video may still not utilize the extended range,
+    // but we can't determine the actual range without decoding frames.
+    return colorTransfer == QVideoFrameFormat::ColorTransfer_ST2084
+            || colorTransfer == QVideoFrameFormat::ColorTransfer_STD_B67;
+}
+
+QtVideo::Rotation MediaDataHolder::rotation() const
 {
     int orientation = m_metaData.value(QMediaMetaData::Orientation).toInt();
-    return static_cast<QVideoFrame::RotationAngle>(orientation);
+    return static_cast<QtVideo::Rotation>(orientation);
 }
 
 AVFormatContext *MediaDataHolder::avContext()
@@ -95,6 +116,7 @@ static void insertMediaData(QMediaMetaData &metaData, QPlatformMediaPlayer::Trac
         metaData.insert(QMediaMetaData::VideoFrameRate,
                         qreal(stream->avg_frame_rate.num) / qreal(stream->avg_frame_rate.den));
         metaData.insert(QMediaMetaData::Orientation, QVariant::fromValue(streamOrientation(stream)));
+        metaData.insert(QMediaMetaData::HasHdrContent, colorTransferSupportsHdr(stream));
         break;
     case QPlatformMediaPlayer::AudioStream:
         metaData.insert(QMediaMetaData::AudioBitRate, (int)codecPar->bit_rate);
@@ -106,36 +128,6 @@ static void insertMediaData(QMediaMetaData &metaData, QPlatformMediaPlayer::Trac
         break;
     }
 };
-
-static int readQIODevice(void *opaque, uint8_t *buf, int buf_size)
-{
-    auto *dev = static_cast<QIODevice *>(opaque);
-    if (dev->atEnd())
-        return AVERROR_EOF;
-    return dev->read(reinterpret_cast<char *>(buf), buf_size);
-}
-
-static int64_t seekQIODevice(void *opaque, int64_t offset, int whence)
-{
-    QIODevice *dev = static_cast<QIODevice *>(opaque);
-
-    if (dev->isSequential())
-        return AVERROR(EINVAL);
-
-    if (whence & AVSEEK_SIZE)
-        return dev->size();
-
-    whence &= ~AVSEEK_FORCE;
-
-    if (whence == SEEK_CUR)
-        offset += dev->pos();
-    else if (whence == SEEK_END)
-        offset += dev->size();
-
-    if (!dev->seek(offset))
-        return AVERROR(EINVAL);
-    return offset;
-}
 
 QPlatformMediaPlayer::TrackType MediaDataHolder::trackTypeFromMediaType(int mediaType)
 {
@@ -179,6 +171,10 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
     constexpr auto NetworkTimeoutUs = "5000000";
     av_dict_set(dict, "timeout", NetworkTimeoutUs, 0);
 
+    const QByteArray protocolWhitelist = qgetenv("QT_FFMPEG_PROTOCOL_WHITELIST");
+    if (!protocolWhitelist.isNull())
+        av_dict_set(dict, "protocol_whitelist", protocolWhitelist.data(), 0);
+
     context->interrupt_callback.opaque = cancelToken.get();
     context->interrupt_callback.callback = [](void *opaque) {
         const auto *cancelToken = static_cast<const ICancelToken *>(opaque);
@@ -198,7 +194,7 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
         auto code = QMediaPlayer::ResourceError;
         if (ret == AVERROR(EACCES))
             code = QMediaPlayer::AccessDeniedError;
-        else if (ret == AVERROR(EINVAL))
+        else if (ret == AVERROR(EINVAL) || ret == AVERROR_INVALIDDATA)
             code = QMediaPlayer::FormatError;
 
         return MediaDataHolder::ContextError{ code, QMediaPlayer::tr("Could not open file") };
@@ -217,6 +213,7 @@ loadMedia(const QUrl &mediaUrl, QIODevice *stream, const std::shared_ptr<ICancel
 #endif
     return context;
 }
+
 } // namespace
 
 MediaDataHolder::Maybe MediaDataHolder::create(const QUrl &url, QIODevice *stream,
@@ -246,6 +243,9 @@ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
 
         if (trackType == QPlatformMediaPlayer::NTrackTypes)
             continue;
+
+        if (stream->disposition & AV_DISPOSITION_ATTACHED_PIC)
+            continue; // Ignore attached picture streams because we treat them as metadata
 
         auto metaData = QFFmpegMetaData::fromAVMetaData(stream->metadata);
         const bool isDefault = stream->disposition & AV_DISPOSITION_DEFAULT;
@@ -286,6 +286,41 @@ MediaDataHolder::MediaDataHolder(AVFormatContextUPtr context,
     updateMetaData();
 }
 
+namespace {
+
+/*!
+    \internal
+
+    Attempt to find an attached picture from the context's streams.
+    This will find ID3v2 pictures on audio files, and also pictures
+    attached to videos.
+ */
+QImage getAttachedPicture(const AVFormatContext *context)
+{
+    if (!context)
+        return {};
+
+    for (unsigned int i = 0; i < context->nb_streams; ++i) {
+        const AVStream* stream = context->streams[i];
+        if (!stream || !(stream->disposition & AV_DISPOSITION_ATTACHED_PIC))
+            continue;
+
+        const AVPacket *compressedImage = &stream->attached_pic;
+        if (!compressedImage || !compressedImage->data || compressedImage->size <= 0)
+            continue;
+
+        // Feed raw compressed data to QImage::fromData, which will decompress it
+        // if it is a recognized format.
+        QImage image = QImage::fromData({ compressedImage->data, compressedImage->size });
+        if (!image.isNull())
+            return image;
+    }
+
+    return {};
+}
+
+}
+
 void MediaDataHolder::updateMetaData()
 {
     m_metaData = {};
@@ -298,6 +333,12 @@ void MediaDataHolder::updateMetaData()
                       QVariant::fromValue(QFFmpegMediaFormatInfo::fileFormatForAVInputFormat(
                               m_context->iformat)));
     m_metaData.insert(QMediaMetaData::Duration, m_duration / qint64(1000));
+
+    if (!m_cachedThumbnail.has_value())
+        m_cachedThumbnail = getAttachedPicture(m_context.get());
+
+    if (!m_cachedThumbnail->isNull())
+        m_metaData.insert(QMediaMetaData::ThumbnailImage, m_cachedThumbnail.value());
 
     for (auto trackType :
          { QPlatformMediaPlayer::AudioStream, QPlatformMediaPlayer::VideoStream }) {

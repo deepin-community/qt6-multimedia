@@ -7,22 +7,29 @@
 #include <qmutex.h>
 #include <qplatformaudioinput_p.h>
 #include <qplatformaudiooutput_p.h>
+#include <qplatformaudioresampler_p.h>
 #include <qplatformvideodevices_p.h>
 #include <qmediadevices.h>
 #include <qcameradevice.h>
 #include <qloggingcategory.h>
+#include <QtCore/qcoreapplication.h>
+#include <QtCore/qapplicationstatic.h>
 
 #include "qplatformcapturablewindows_p.h"
-#include "QtCore/private/qfactoryloader_p.h"
-#include "private/qplatformmediaformatinfo_p.h"
+#include "qplatformmediadevices_p.h"
+#include <QtCore/private/qfactoryloader_p.h>
+#include <QtCore/private/qcoreapplication_p.h>
+#include <private/qplatformmediaformatinfo_p.h>
 #include "qplatformmediaplugin_p.h"
 
-class QDummyIntegration : public QPlatformMediaIntegration
+namespace {
+
+class QFallbackIntegration : public QPlatformMediaIntegration
 {
 public:
-    QDummyIntegration()
+    QFallbackIntegration() : QPlatformMediaIntegration(QLatin1String("fallback"))
     {
-        qCritical("QtMultimedia is not currently supported on this platform or compiler.");
+        qWarning("No QtMultimedia backends found. Only QMediaDevices, QAudioDevice, QSoundEffect, QAudioSink, and QAudioSource are available.");
     }
 };
 
@@ -33,21 +40,6 @@ Q_GLOBAL_STATIC_WITH_ARGS(QFactoryLoader, loader,
                            QLatin1String("/multimedia")))
 
 static const auto FFmpegBackend = QStringLiteral("ffmpeg");
-
-static QStringList availableBackends()
-{
-    QStringList list;
-
-    if (QFactoryLoader *fl = loader()) {
-        const auto keyMap = fl->keyMap();
-        for (auto it = keyMap.constBegin(); it != keyMap.constEnd(); ++it)
-            if (!list.contains(it.value()))
-                list << it.value();
-    }
-
-    qCDebug(qLcMediaPlugin) << "Available backends" << list;
-    return list;
-}
 
 static QString defaultBackend(const QStringList &backends)
 {
@@ -71,57 +63,58 @@ static QString defaultBackend(const QStringList &backends)
     return backends[0];
 }
 
-QT_BEGIN_NAMESPACE
-
-struct QPlatformMediaIntegration::InstanceHolder
+struct InstanceHolder
 {
-    // TODO: replace the mutex with std::once
-    QBasicMutex mutex;
+    InstanceHolder()
+    {
+        if (!QCoreApplication::instance())
+            qCCritical(qLcMediaPlugin()) << "Qt Multimedia requires a QCoreApplication instance";
+
+        const QStringList backends = QPlatformMediaIntegration::availableBackends();
+        QString backend = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND"));
+        if (backend.isEmpty() && !backends.isEmpty())
+            backend = defaultBackend(backends);
+
+        qCDebug(qLcMediaPlugin) << "Loading media backend" << backend;
+        instance.reset(
+                qLoadPlugin<QPlatformMediaIntegration, QPlatformMediaPlugin>(loader(), backend));
+
+        if (!instance) {
+            // No backends found. Use fallback to support basic functionality
+            instance = std::make_unique<QFallbackIntegration>();
+        }
+    }
+
+    ~InstanceHolder()
+    {
+        instance.reset();
+        qCDebug(qLcMediaPlugin) << "Released media backend";
+    }
+
     std::unique_ptr<QPlatformMediaIntegration> instance;
-    Factory factory;
-} instanceHolder;
+};
+
+Q_APPLICATION_STATIC(InstanceHolder, s_instanceHolder);
+
+} // namespace
+
+QT_BEGIN_NAMESPACE
 
 QPlatformMediaIntegration *QPlatformMediaIntegration::instance()
 {
-    QMutexLocker locker(&instanceHolder.mutex);
-    if (instanceHolder.instance)
-        return instanceHolder.instance.get();
-
-    if (instanceHolder.factory) {
-        instanceHolder.instance = instanceHolder.factory();
-        return instanceHolder.instance.get();
-    }
-
-    const auto backends = availableBackends();
-    QString backend = QString::fromUtf8(qgetenv("QT_MEDIA_BACKEND"));
-    if (backend.isEmpty() && !backends.isEmpty())
-        backend = defaultBackend(backends);
-
-    qCDebug(qLcMediaPlugin) << "loading backend" << backend;
-    instanceHolder.instance.reset(
-            qLoadPlugin<QPlatformMediaIntegration, QPlatformMediaPlugin>(loader(), backend));
-
-    if (!instanceHolder.instance) {
-        qWarning() << "could not load multimedia backend" << backend;
-        instanceHolder.instance = std::make_unique<QDummyIntegration>();
-    }
-
-    return instanceHolder.instance.get();
-}
-
-/*
-    This API is there to be able to test with a mock backend.
-*/
-void QPlatformMediaIntegration::setPlatformFactory(Factory factory)
-{
-    Q_ASSERT((factory == nullptr) ^ (instanceHolder.factory == nullptr));
-    instanceHolder.instance.reset();
-    instanceHolder.factory = std::move(factory);
+    return s_instanceHolder->instance.get();
 }
 
 QList<QCameraDevice> QPlatformMediaIntegration::videoInputs()
 {
-    return m_videoDevices ? m_videoDevices->videoDevices() : QList<QCameraDevice>{};
+    auto devices = videoDevices();
+    return devices ? devices->videoDevices() : QList<QCameraDevice>{};
+}
+
+QMaybe<std::unique_ptr<QPlatformAudioResampler>>
+QPlatformMediaIntegration::createAudioResampler(const QAudioFormat &, const QAudioFormat &)
+{
+    return notAvailable;
 }
 
 QMaybe<QPlatformAudioInput *> QPlatformMediaIntegration::createAudioInput(QAudioInput *q)
@@ -134,14 +127,16 @@ QMaybe<QPlatformAudioOutput *> QPlatformMediaIntegration::createAudioOutput(QAud
     return new QPlatformAudioOutput(q);
 }
 
-QList<QCapturableWindow> QPlatformMediaIntegration::capturableWindows()
+QList<QCapturableWindow> QPlatformMediaIntegration::capturableWindowsList()
 {
-    return m_capturableWindows ? m_capturableWindows->windows() : QList<QCapturableWindow>{};
+    const auto capturableWindows = this->capturableWindows();
+    return capturableWindows ? capturableWindows->windows() : QList<QCapturableWindow>{};
 }
 
 bool QPlatformMediaIntegration::isCapturableWindowValid(const QCapturableWindowPrivate &window)
 {
-    return m_capturableWindows && m_capturableWindows->isWindowValid(window);
+    const auto capturableWindows = this->capturableWindows();
+    return capturableWindows && capturableWindows->isWindowValid(window);
 }
 
 const QPlatformMediaFormatInfo *QPlatformMediaIntegration::formatInfo()
@@ -158,8 +153,70 @@ QPlatformMediaFormatInfo *QPlatformMediaIntegration::createFormatInfo()
     return new QPlatformMediaFormatInfo;
 }
 
-QPlatformMediaIntegration::QPlatformMediaIntegration() = default;
+std::unique_ptr<QPlatformMediaDevices> QPlatformMediaIntegration::createMediaDevices()
+{
+    return QPlatformMediaDevices::create();
+}
+
+// clang-format off
+QPlatformVideoDevices *QPlatformMediaIntegration::videoDevices()
+{
+    std::call_once(m_videoDevicesOnceFlag,
+                   [this]() {
+                       m_videoDevices.reset(createVideoDevices());
+                   });
+    return m_videoDevices.get();
+}
+
+QPlatformCapturableWindows *QPlatformMediaIntegration::capturableWindows()
+{
+    std::call_once(m_capturableWindowsOnceFlag,
+                   [this]() {
+                       m_capturableWindows.reset(createCapturableWindows());
+                   });
+    return m_capturableWindows.get();
+}
+
+QPlatformMediaDevices *QPlatformMediaIntegration::mediaDevices()
+{
+    std::call_once(m_mediaDevicesOnceFlag, [this] {
+        m_mediaDevices = createMediaDevices();
+    });
+    return m_mediaDevices.get();
+}
+
+// clang-format on
+
+QStringList QPlatformMediaIntegration::availableBackends()
+{
+    QStringList list;
+
+    if (QFactoryLoader *fl = loader()) {
+        const auto keyMap = fl->keyMap();
+        for (auto it = keyMap.constBegin(); it != keyMap.constEnd(); ++it)
+            if (!list.contains(it.value()))
+                list << it.value();
+    }
+
+    qCDebug(qLcMediaPlugin) << "Available backends" << list;
+    return list;
+}
+
+QLatin1String QPlatformMediaIntegration::name()
+{
+    return m_backendName;
+}
+
+QVideoFrame QPlatformMediaIntegration::convertVideoFrame(QVideoFrame &,
+                                                         const QVideoFrameFormat &)
+{
+    return {};
+}
+
+QPlatformMediaIntegration::QPlatformMediaIntegration(QLatin1String name) : m_backendName(name) { }
 
 QPlatformMediaIntegration::~QPlatformMediaIntegration() = default;
 
 QT_END_NAMESPACE
+
+#include "moc_qplatformmediaintegration_p.cpp"

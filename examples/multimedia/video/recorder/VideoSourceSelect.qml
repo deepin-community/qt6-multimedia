@@ -46,7 +46,19 @@ Row {
         active: windowAvailable
     }
 
-    MediaDevices { id: mediaDevices }
+    MediaDevices { id: mediaDevices
+        onVideoInputsChanged: {
+
+            videoSourceModel.populate()
+
+            for (var i = 0; i < videoSourceModel.count; i++) {
+                if (videoSourceModel.get(i).value.type !== 'toggler') {
+                    comboBox.currentIndex = i
+                    break
+                }
+            }
+        }
+    }
 
     Switch {
         id: videoSourceSwitch
@@ -130,7 +142,7 @@ Row {
             font.underline: isToggler
             font.bold: comboBox.currentIndex === index && !isToggler ||
                        isToggler && comboBox.highlightedIndex === index
-            palette.text: isToggler ? 'blue' : comboBox.palette.text
+            palette.text: isToggler ? comboBox.palette.link : comboBox.palette.text
 
             MouseArea {
                 anchors.fill: parent

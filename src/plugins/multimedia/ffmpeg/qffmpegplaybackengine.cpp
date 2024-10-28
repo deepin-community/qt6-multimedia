@@ -6,6 +6,7 @@
 #include "qaudiooutput.h"
 #include "private/qplatformaudiooutput_p.h"
 #include "private/qplatformvideosink_p.h"
+#include "private/qaudiobufferoutput_p.h"
 #include "qiodevice.h"
 #include "playbackengine/qffmpegdemuxer_p.h"
 #include "playbackengine/qffmpegstreamdecoder_p.h"
@@ -108,11 +109,6 @@ void PlaybackEngine::onRendererSynchronized(quint64 id, std::chrono::steady_cloc
     Q_ASSERT(m_renderers[QPlatformMediaPlayer::AudioStream]
              && m_renderers[QPlatformMediaPlayer::AudioStream]->id() == id);
 
-    if (m_timeController.positionFromTime(tp) < pos) {
-        // TODO: maybe check with an asset
-        qWarning() << "Unexpected synchronization " << m_timeController.positionFromTime(tp) - pos;
-    }
-
     m_timeController.sync(tp, pos);
 
     forEachExistingObject<Renderer>([&](auto &renderer) {
@@ -202,11 +198,11 @@ PlaybackEngine::createRenderer(QPlatformMediaPlayer::TrackType trackType)
     switch (trackType) {
     case QPlatformMediaPlayer::VideoStream:
         return m_videoSink
-                ? createPlaybackEngineObject<VideoRenderer>(m_timeController, m_videoSink, m_media.getRotationAngle())
+                ? createPlaybackEngineObject<VideoRenderer>(m_timeController, m_videoSink, m_media.rotation())
                 : RendererPtr{ {}, {} };
     case QPlatformMediaPlayer::AudioStream:
-        return m_audioOutput
-                ? createPlaybackEngineObject<AudioRenderer>(m_timeController, m_audioOutput)
+        return m_audioOutput || m_audioBufferOutput
+                ? createPlaybackEngineObject<AudioRenderer>(m_timeController, m_audioOutput, m_audioBufferOutput)
                 : RendererPtr{ {}, {} };
     case QPlatformMediaPlayer::SubtitleStream:
         return m_videoSink
@@ -417,6 +413,8 @@ void PlaybackEngine::createDemuxer()
     m_demuxer = createPlaybackEngineObject<Demuxer>(m_media.avContext(), positionWithOffset,
                                                     streamIndexes, m_loops);
 
+    connect(m_demuxer.get(), &Demuxer::packetsBuffered, this, &PlaybackEngine::buffered);
+
     forEachExistingObject<StreamDecoder>([&](auto &stream) {
         connect(m_demuxer.get(), Demuxer::signalByTrackType(stream->trackType()), stream.get(),
                 &StreamDecoder::decode);
@@ -489,7 +487,7 @@ void PlaybackEngine::setAudioSink(QPlatformAudioOutput *output) {
 
 void PlaybackEngine::setAudioSink(QAudioOutput *output)
 {
-    auto prev = std::exchange(m_audioOutput, output);
+    QAudioOutput *prev = std::exchange(m_audioOutput, output);
     if (prev == output)
         return;
 
@@ -499,6 +497,14 @@ void PlaybackEngine::setAudioSink(QAudioOutput *output)
         // might need some improvements
         forceUpdate();
     }
+}
+
+void PlaybackEngine::setAudioBufferOutput(QAudioBufferOutput *output)
+{
+    QAudioBufferOutput *prev = std::exchange(m_audioBufferOutput, output);
+    if (prev == output)
+        return;
+    updateActiveAudioOutput(output);
 }
 
 qint64 PlaybackEngine::currentPosition(bool topPos) const {
@@ -519,7 +525,10 @@ qint64 PlaybackEngine::currentPosition(bool topPos) const {
                          : std::min(*pos, rendererPos);
     }
 
-    return boundPosition(pos ? *pos : m_timeController.currentPosition());
+    if (!pos)
+        pos = m_timeController.currentPosition();
+
+    return boundPosition(*pos - m_currentLoopOffset.pos);
 }
 
 qint64 PlaybackEngine::duration() const
@@ -572,7 +581,10 @@ void PlaybackEngine::finilizeTime(qint64 pos)
 
 void PlaybackEngine::finalizeOutputs()
 {
-    updateActiveAudioOutput(nullptr);
+    if (m_audioBufferOutput)
+        updateActiveAudioOutput(static_cast<QAudioBufferOutput *>(nullptr));
+    if (m_audioOutput)
+        updateActiveAudioOutput(static_cast<QAudioOutput *>(nullptr));
     updateActiveVideoOutput(nullptr, true);
 }
 
@@ -582,7 +594,8 @@ bool PlaybackEngine::hasRenderer(quint64 id) const
                        [id](auto &renderer) { return renderer && renderer->id() == id; });
 }
 
-void PlaybackEngine::updateActiveAudioOutput(QAudioOutput *output)
+template <typename AudioOutput>
+void PlaybackEngine::updateActiveAudioOutput(AudioOutput *output)
 {
     if (auto renderer =
                 qobject_cast<AudioRenderer *>(m_renderers[QPlatformMediaPlayer::AudioStream].get()))
@@ -612,11 +625,14 @@ void PlaybackEngine::updateVideoSinkSize(QVideoSink *prevSink)
         if (streamIndex >= 0) {
             const auto context = m_media.avContext();
             const auto stream = context->streams[streamIndex];
-            const auto pixelAspectRatio = av_guess_sample_aspect_ratio(context, stream, nullptr);
+            const AVRational pixelAspectRatio =
+                    av_guess_sample_aspect_ratio(context, stream, nullptr);
             // auto size = metaData().value(QMediaMetaData::Resolution)
-            platformVideoSink->setNativeSize(
+            const QSize size =
                     qCalculateFrameSize({ stream->codecpar->width, stream->codecpar->height },
-                                        { pixelAspectRatio.num, pixelAspectRatio.den }));
+                                        { pixelAspectRatio.num, pixelAspectRatio.den });
+
+            platformVideoSink->setNativeSize(qRotatedFrameSize(size, m_media.rotation()));
         }
     }
 }

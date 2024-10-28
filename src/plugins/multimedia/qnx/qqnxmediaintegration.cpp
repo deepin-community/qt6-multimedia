@@ -26,20 +26,22 @@ public:
 
     QPlatformMediaIntegration* create(const QString &name) override
     {
-        if (name == QLatin1String("qnx"))
+        if (name == u"qnx")
             return new QQnxMediaIntegration;
         return nullptr;
     }
 };
 
-QQnxMediaIntegration::QQnxMediaIntegration()
-{
-    m_videoDevices = std::make_unique<QQnxVideoDevices>(this);
-}
+QQnxMediaIntegration::QQnxMediaIntegration() : QPlatformMediaIntegration(QLatin1String("qnx")) { }
 
 QPlatformMediaFormatInfo *QQnxMediaIntegration::createFormatInfo()
 {
     return new QQnxFormatInfo;
+}
+
+QPlatformVideoDevices *QQnxMediaIntegration::createVideoDevices()
+{
+    return new QQnxVideoDevices(this);
 }
 
 QMaybe<QPlatformVideoSink *> QQnxMediaIntegration::createVideoSink(QVideoSink *sink)

@@ -61,6 +61,8 @@ public:
 
     void setAudioOutput(QPlatformAudioOutput *) override;
 
+    void setAudioBufferOutput(QAudioBufferOutput *) override;
+
     QMediaMetaData metaData() const override;
 
     void setVideoSink(QVideoSink *sink) override;
@@ -78,6 +80,8 @@ private:
     void setMediaAsync(QFFmpeg::MediaDataHolder::Maybe mediaDataHolder,
                        const std::shared_ptr<QFFmpeg::CancelToken> &cancelToken);
 
+    void mediaStatusChanged(QMediaPlayer::MediaStatus);
+
 private slots:
     void updatePosition();
     void endOfStream();
@@ -86,6 +90,7 @@ private slots:
         QPlatformMediaPlayer::error(error, errorString);
     }
     void onLoopChanged();
+    void onBuffered();
 
 private:
     QTimer m_positionUpdateTimer;
@@ -95,11 +100,13 @@ private:
 
     std::unique_ptr<PlaybackEngine> m_playbackEngine;
     QPlatformAudioOutput *m_audioOutput = nullptr;
+    QPointer<QAudioBufferOutput> m_audioBufferOutput;
     QPointer<QVideoSink> m_videoSink;
 
     QUrl m_url;
     QPointer<QIODevice> m_device;
     float m_playbackRate = 1.;
+    float m_bufferProgress = 0.f;
     QFuture<void> m_loadMedia;
     std::shared_ptr<QFFmpeg::CancelToken> m_cancelToken; // For interrupting ongoing
                                                          // network connection attempt
