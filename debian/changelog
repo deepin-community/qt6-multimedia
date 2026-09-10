@@ -1,3 +1,9 @@
+qt6-multimedia (6.8.0-1deepin) unstable; urgency=medium
+
+  * Rebuild with LTO enabled (dpkg vendor feature optimize/lto).
+
+ -- tunaichao <tunaichao@uniontech.com>  Thu, 10 Sep 2026 20:37:34 +0800
+
 qt6-multimedia (6.8.0-0deepin) unstable; urgency=medium
 
   * New upstream release (6.8.0).
