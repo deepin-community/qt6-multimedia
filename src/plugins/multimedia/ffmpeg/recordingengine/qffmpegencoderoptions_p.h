@@ -14,18 +14,22 @@
 // We mean it.
 //
 
-#include "qffmpeghwaccel_p.h"
-#include "qvideoframeformat.h"
-#include "private/qplatformmediarecorder_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeghwaccel_p.h>
+#include <QtMultimedia/qvideoframeformat.h>
+#include <QtMultimedia/private/qplatformmediarecorder_p.h>
+
+#include <QtCore/qlatin1stringview.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-void applyVideoEncoderOptions(const QMediaEncoderSettings &settings, const QByteArray &codecName, AVCodecContext *codec, AVDictionary **opts);
-void applyAudioEncoderOptions(const QMediaEncoderSettings &settings, const QByteArray &codecName, AVCodecContext *codec, AVDictionary **opts);
+void applyVideoEncoderOptions(const QMediaEncoderSettings &settings, QLatin1StringView codecName,
+                              AVCodecContext *codec, AVDictionary **opts);
+void applyAudioEncoderOptions(const QMediaEncoderSettings &settings, QLatin1StringView codecName,
+                              AVCodecContext *codec, AVDictionary **opts);
 
-}
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

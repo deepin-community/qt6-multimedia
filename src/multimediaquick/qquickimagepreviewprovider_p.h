@@ -15,8 +15,9 @@
 // We mean it.
 //
 
-#include <private/qtmultimediaquickglobal_p.h>
+#include <QtMultimediaQuick/private/qtmultimediaquickglobal_p.h>
 #include <QtQuick/qquickimageprovider.h>
+#include <QtCore/quuid.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -24,10 +25,11 @@ class Q_MULTIMEDIAQUICK_EXPORT QQuickImagePreviewProvider : public QQuickImagePr
 {
 public:
     QQuickImagePreviewProvider();
-    ~QQuickImagePreviewProvider();
+    ~QQuickImagePreviewProvider() override;
 
     QImage requestImage(const QString &id, QSize *size, const QSize& requestedSize) override;
-    static void registerPreview(const QString &id, const QImage &preview);
+    static void registerPreview(QUuid captureInstance, QString id, QImage);
+    static void cleanupInstance(QUuid captureInstance);
 };
 
 QT_END_NAMESPACE

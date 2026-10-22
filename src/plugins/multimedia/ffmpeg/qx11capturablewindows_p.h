@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include "private/qplatformcapturablewindows_p.h"
+#include <QtMultimedia/private/qplatformcapturablewindows_p.h>
 #include <mutex>
 
 struct _XDisplay;
@@ -31,6 +31,8 @@ public:
     QList<QCapturableWindow> windows() const override;
 
     bool isWindowValid(const QCapturableWindowPrivate &window) const override;
+
+    q23::expected<QCapturableWindow, QString> fromQWindow(QWindow *) const override;
 
 private:
     Display *display() const;

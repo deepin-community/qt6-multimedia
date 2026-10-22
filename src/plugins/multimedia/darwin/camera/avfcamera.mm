@@ -1,13 +1,15 @@
 // Copyright (C) 2022 The Qt Company Ltd and/or its subsidiary(-ies).
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "avfcameradebug_p.h"
 #include "avfcamera_p.h"
-#include "avfcamerasession_p.h"
-#include "avfcameraservice_p.h"
-#include "avfcamerautility_p.h"
-#include "avfcamerarenderer_p.h"
-#include <qmediacapturesession.h>
+
+#include <camera/avfcamerasession_p.h>
+#include <camera/avfcameraservice_p.h>
+#include <camera/avfcamerarenderer_p.h>
+
+#include <QtMultimedia/qmediacapturesession.h>
+#include <QtMultimedia/private/qavfcameradebug_p.h>
+#include <QtMultimedia/private/qavfcamerautility_p.h>
 
 QT_USE_NAMESPACE
 
@@ -17,46 +19,39 @@ AVFCamera::AVFCamera(QCamera *camera)
     Q_ASSERT(camera);
 }
 
-AVFCamera::~AVFCamera()
-{
-}
+AVFCamera::~AVFCamera() = default;
 
-void AVFCamera::setActive(bool active)
+void AVFCamera::onActiveChanged(bool active)
 {
-    if (m_active == active)
-        return;
-    if (m_cameraDevice.isNull() && active)
-        return;
-
-    m_active = active;
     if (m_session)
         m_session->setActive(active);
-
-    if (active)
-        updateCameraConfiguration();
-    Q_EMIT activeChanged(m_active);
 }
 
-void AVFCamera::setCamera(const QCameraDevice &camera)
+void AVFCamera::onCameraDeviceChanged(
+    const QCameraDevice &newCameraDevice,
+    const QCameraFormat &newFormat)
 {
-    if (m_cameraDevice == camera)
+    // The incoming format should never be null if the incoming device is not null.
+    Q_ASSERT(newCameraDevice.isNull() || !newFormat.isNull());
+
+    if (newCameraDevice.isNull() || !checkCameraPermission())
         return;
-    m_cameraDevice = camera;
-    if (m_session)
-        m_session->setActiveCamera(camera);
-    setCameraFormat({});
+
+    if (m_session) {
+        // TODO: In the future, we should pass the new format into setActiveCamera,
+        // and determine if we can keep the camera-stream active with the new
+        // device + format. Then we should propagate any errors up the call stack.
+        m_session->setActiveCamera(newCameraDevice);
+        m_session->setCameraFormat(newFormat);
+    }
 }
 
-bool AVFCamera::setCameraFormat(const QCameraFormat &format)
+bool AVFCamera::tryApplyCameraFormat(const QCameraFormat &newFormat)
 {
-    if (!format.isNull() && !m_cameraDevice.videoFormats().contains(format))
-        return false;
-
-    m_cameraFormat = format.isNull() ? findBestCameraFormat(m_cameraDevice) : format;
-
+    // TODO: In the future, we should be able to return false if we failed
+    // to apply the format.
     if (m_session)
-        m_session->setCameraFormat(m_cameraFormat);
-
+        m_session->setCameraFormat(newFormat);
     return true;
 }
 

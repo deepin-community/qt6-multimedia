@@ -16,15 +16,15 @@
 //
 
 #include <QtMultimedia/qtmultimediaglobal.h>
+#include <QtMultimedia/qvideoframe.h>
+#include <QtMultimedia/qvideosink.h>
+#include <QtGui/qwindowdefs.h>
+#include <QtCore/private/qglobal_p.h>
+#include <QtCore/qdebug.h>
+#include <QtCore/qmutex.h>
 #include <QtCore/qobject.h>
 #include <QtCore/qrect.h>
 #include <QtCore/qsize.h>
-#include <QtCore/qmutex.h>
-#include <QtGui/qwindowdefs.h>
-#include <qvideosink.h>
-#include <qvideoframe.h>
-#include <qdebug.h>
-#include <private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -56,7 +56,7 @@ public:
 
     void setNativeSize(QSize s);
 
-    virtual void setVideoFrame(const QVideoFrame &frame);
+    void setVideoFrame(const QVideoFrame &frame);
 
     QVideoFrame currentVideoFrame() const;
 
@@ -67,12 +67,14 @@ public:
 protected:
     explicit QPlatformVideoSink(QVideoSink *parent);
 
+    virtual void onVideoFrameChanged(const QVideoFrame &) { }
+
 Q_SIGNALS:
-    void rhiChanged(QRhi *rhi);
+    void rhiChanged();
 
 private:
-    QVideoSink *m_sink = nullptr;
-    mutable QMutex m_mutex;
+    QVideoSink *const m_sink = nullptr;
+    mutable QMutex m_mutex; // Protects all members below
     QSize m_nativeSize;
     QString m_subtitleText;
     QVideoFrame m_currentVideoFrame;

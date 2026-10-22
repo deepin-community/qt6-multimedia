@@ -4,11 +4,11 @@
 #ifndef QSOUNDEFFECT_H
 #define QSOUNDEFFECT_H
 
-#include <QtMultimedia/qtmultimediaglobal.h>
 #include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qtmultimediaglobal.h>
 #include <QtCore/qobject.h>
-#include <QtCore/qurl.h>
 #include <QtCore/qstringlist.h>
+#include <QtCore/qurl.h>
 
 
 QT_BEGIN_NAMESPACE
@@ -48,7 +48,7 @@ public:
 
     explicit QSoundEffect(QObject *parent = nullptr);
     explicit QSoundEffect(const QAudioDevice &audioDevice, QObject *parent = nullptr);
-    ~QSoundEffect();
+    ~QSoundEffect() override;
 
     static QStringList supportedMimeTypes();
 
@@ -90,7 +90,10 @@ public Q_SLOTS:
 
 private:
     Q_DISABLE_COPY(QSoundEffect)
-    QSoundEffectPrivate *d = nullptr;
+    Q_DECLARE_PRIVATE(QSoundEffect)
+
+    // ### Qt7: remove unused member
+    QT6_ONLY(Q_DECL_UNUSED_MEMBER void *unused = nullptr;) // for ABI compatibility
 };
 
 QT_END_NAMESPACE

@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include "private/qplatformcapturablewindows_p.h"
+#include <QtMultimedia/private/qplatformcapturablewindows_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,6 +25,8 @@ public:
     QList<QCapturableWindow> windows() const override;
 
     bool isWindowValid(const QCapturableWindowPrivate &window) const override;
+
+    q23::expected<QCapturableWindow, QString> fromQWindow(QWindow *) const override;
 };
 
 QT_END_NAMESPACE

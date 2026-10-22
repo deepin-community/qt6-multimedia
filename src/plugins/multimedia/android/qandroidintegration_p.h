@@ -19,27 +19,29 @@
 
 QT_BEGIN_NAMESPACE
 
-class QAndroidMediaDevices;
+class QAndroidAudioDevices;
 
 class QAndroidIntegration : public QPlatformMediaIntegration
 {
 public:
     QAndroidIntegration();
 
-    QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *decoder) override;
-    QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() override;
-    QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *player) override;
-    QMaybe<QPlatformCamera *> createCamera(QCamera *camera) override;
-    QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *recorder) override;
-    QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *imageCapture) override;
+    q23::expected<QPlatformAudioDecoder *, QString> createAudioDecoder(QAudioDecoder *decoder) override;
+    q23::expected<QPlatformMediaCaptureSession *, QString> createCaptureSession() override;
+    q23::expected<QPlatformMediaPlayer *, QString> createPlayer(QMediaPlayer *player) override;
+    q23::expected<QPlatformCamera *, QString> createCamera(QCamera *camera) override;
+    q23::expected<QPlatformMediaRecorder *, QString> createRecorder(QMediaRecorder *recorder) override;
+    q23::expected<QPlatformImageCapture *, QString> createImageCapture(QImageCapture *imageCapture) override;
 
-    QMaybe<QPlatformAudioOutput *> createAudioOutput(QAudioOutput *q) override;
-    QMaybe<QPlatformAudioInput *> createAudioInput(QAudioInput *audioInput) override;
+    q23::expected<QPlatformAudioOutput *, QString> createAudioOutput(QAudioOutput *q) override;
+    q23::expected<QPlatformAudioInput *, QString> createAudioInput(QAudioInput *audioInput) override;
 
-    QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) override;
-    QList<QCameraDevice> videoInputs() override;
+    q23::expected<QPlatformVideoSink *, QString> createVideoSink(QVideoSink *) override;
+
+    [[nodiscard]] static bool registerNativeMethods();
 
 protected:
+    QPlatformVideoDevices *createVideoDevices() override;
     QPlatformMediaFormatInfo *createFormatInfo() override;
 };
 

@@ -14,10 +14,10 @@
 // We mean it.
 //
 
-#include <private/qquick3dnode_p.h>
-#include <QUrl>
-#include <qvector3d.h>
-#include <qspatialsound.h>
+#include <QtQuick3D/private/qquick3dnode_p.h>
+#include <QtGui/qvector3d.h>
+#include <QtCore/qurl.h>
+#include <QtSpatialAudio/qspatialsound.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -40,9 +40,9 @@ class QQuick3DSpatialSound : public QQuick3DNode
 
 public:
     QQuick3DSpatialSound();
-    ~QQuick3DSpatialSound();
+    ~QQuick3DSpatialSound() override;
 
-    void setSource(QUrl source);
+    void setSource(const QUrl &source);
     QUrl source() const;
 
     void setVolume(float volume);

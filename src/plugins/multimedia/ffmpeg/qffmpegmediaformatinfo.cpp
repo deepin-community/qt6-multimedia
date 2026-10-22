@@ -2,76 +2,111 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qffmpegmediaformatinfo_p.h"
-#include "qffmpegcodecstorage_p.h"
-#include "qaudioformat.h"
-#include "qimagewriter.h"
 
-#include <qloggingcategory.h>
+#include "qffmpegcodecstorage_p.h"
+#include "qffmpeg_ranges_p.h"
+
+#include <QtCore/qoperatingsystemversion.h>
+#include <QtCore/qvarlengtharray.h>
+#include <QtCore/private/qflatmap_p.h>
+#include <QtMultimedia/qaudioformat.h>
+#include <QtMultimedia/private/qmultimedia_ranges_p.h>
+#include <QtGui/qimagewriter.h>
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcMediaFormatInfo, "qt.multimedia.ffmpeg.mediaformatinfo")
+using namespace Qt::Literals;
 
-static struct {
-    AVCodecID id;
-    QMediaFormat::VideoCodec codec;
-} videoCodecMap [] = {
-    { AV_CODEC_ID_MPEG1VIDEO, QMediaFormat::VideoCodec::MPEG1 },
-    { AV_CODEC_ID_MPEG2VIDEO, QMediaFormat::VideoCodec::MPEG2 },
-    { AV_CODEC_ID_MPEG4, QMediaFormat::VideoCodec::MPEG4 },
-    { AV_CODEC_ID_H264, QMediaFormat::VideoCodec::H264 },
-    { AV_CODEC_ID_HEVC, QMediaFormat::VideoCodec::H265 },
-    { AV_CODEC_ID_VP8, QMediaFormat::VideoCodec::VP8 },
-    { AV_CODEC_ID_VP9, QMediaFormat::VideoCodec::VP9 },
-    { AV_CODEC_ID_AV1, QMediaFormat::VideoCodec::AV1 },
-    { AV_CODEC_ID_THEORA, QMediaFormat::VideoCodec::Theora },
-    { AV_CODEC_ID_WMV3, QMediaFormat::VideoCodec::WMV },
-    { AV_CODEC_ID_MJPEG, QMediaFormat::VideoCodec::MotionJPEG }
-};
+namespace {
 
-static AVCodecID codecId(QMediaFormat::VideoCodec codec)
+template <size_t MapSize, typename Key, typename Value>
+auto makeReverseLookupTable(std::initializer_list<std::pair<const Key, Value>> map)
 {
-    for (const auto &c : videoCodecMap) {
-        if (c.codec == codec)
-            return c.id;
-    }
-    return AV_CODEC_ID_NONE;
+    using namespace QtMultimediaPrivate;
+
+    auto keyValuePairs = map | views::transform([](const auto &pair) {
+        return std::pair<const Value, Key>(pair.second, pair.first);
+    }) | ranges::to<std::vector<std::pair<const Value, Key>>>();
+
+    return keyValuePairs | ranges::to<QVarLengthFlatMap<Value, Key, MapSize>>();
 }
 
-static struct {
-    AVCodecID id;
-    QMediaFormat::AudioCodec codec;
-} audioCodecMap [] = {
-    { AV_CODEC_ID_MP3, QMediaFormat::AudioCodec::MP3 },
-    { AV_CODEC_ID_AAC, QMediaFormat::AudioCodec::AAC },
-    { AV_CODEC_ID_AC3, QMediaFormat::AudioCodec::AC3 },
-    { AV_CODEC_ID_EAC3, QMediaFormat::AudioCodec::EAC3 },
-    { AV_CODEC_ID_FLAC, QMediaFormat::AudioCodec::FLAC },
-    { AV_CODEC_ID_TRUEHD, QMediaFormat::AudioCodec::DolbyTrueHD },
-    { AV_CODEC_ID_OPUS, QMediaFormat::AudioCodec::Opus },
-    { AV_CODEC_ID_VORBIS, QMediaFormat::AudioCodec::Vorbis },
-    { AV_CODEC_ID_PCM_S16LE, QMediaFormat::AudioCodec::Wave },
-    { AV_CODEC_ID_WMAPRO, QMediaFormat::AudioCodec::WMA },
-    { AV_CODEC_ID_ALAC, QMediaFormat::AudioCodec::ALAC }
-};
+static constexpr auto videoCodecMap =
+        std::initializer_list<std::pair<const QMediaFormat::VideoCodec, AVCodecID>>{
+            { QMediaFormat::VideoCodec::MPEG1, AV_CODEC_ID_MPEG1VIDEO },
+            { QMediaFormat::VideoCodec::MPEG2, AV_CODEC_ID_MPEG2VIDEO },
+            { QMediaFormat::VideoCodec::MPEG4, AV_CODEC_ID_MPEG4 },
+            { QMediaFormat::VideoCodec::H264, AV_CODEC_ID_H264 },
+            { QMediaFormat::VideoCodec::H265, AV_CODEC_ID_HEVC },
+            { QMediaFormat::VideoCodec::VP8, AV_CODEC_ID_VP8 },
+            { QMediaFormat::VideoCodec::VP9, AV_CODEC_ID_VP9 },
+            { QMediaFormat::VideoCodec::AV1, AV_CODEC_ID_AV1 },
+            { QMediaFormat::VideoCodec::Theora, AV_CODEC_ID_THEORA },
+            { QMediaFormat::VideoCodec::WMV, AV_CODEC_ID_WMV3 },
+            { QMediaFormat::VideoCodec::MotionJPEG, AV_CODEC_ID_MJPEG },
+        };
 
-static AVCodecID codecId(QMediaFormat::AudioCodec codec)
+} // namespace
+
+AVCodecID codecId(QMediaFormat::VideoCodec codec)
 {
-    for (const auto &c : audioCodecMap) {
-        if (c.codec == codec)
-            return c.id;
-    }
-    return AV_CODEC_ID_NONE;
+    static const QVarLengthFlatMap<QMediaFormat::VideoCodec, AVCodecID, videoCodecMap.size()> map(
+            videoCodecMap.begin(), videoCodecMap.end());
+    const auto it = map.find(codec);
+    return it != map.end() ? it->second : AV_CODEC_ID_NONE;
+}
+
+QMediaFormat::VideoCodec videoCodecFromId(AVCodecID id)
+{
+    using namespace QtMultimediaPrivate;
+
+    static const auto map = makeReverseLookupTable<videoCodecMap.size()>(videoCodecMap);
+
+    const auto it = map.find(id);
+    return it != map.end() ? it->second : QMediaFormat::VideoCodec::Unspecified;
+}
+
+static constexpr auto audioCodecMap =
+        std::initializer_list<std::pair<const QMediaFormat::AudioCodec, AVCodecID>>{
+            { QMediaFormat::AudioCodec::MP3, AV_CODEC_ID_MP3 },
+            { QMediaFormat::AudioCodec::AAC, AV_CODEC_ID_AAC },
+            { QMediaFormat::AudioCodec::AC3, AV_CODEC_ID_AC3 },
+            { QMediaFormat::AudioCodec::EAC3, AV_CODEC_ID_EAC3 },
+            { QMediaFormat::AudioCodec::FLAC, AV_CODEC_ID_FLAC },
+            { QMediaFormat::AudioCodec::DolbyTrueHD, AV_CODEC_ID_TRUEHD },
+            { QMediaFormat::AudioCodec::Opus, AV_CODEC_ID_OPUS },
+            { QMediaFormat::AudioCodec::Vorbis, AV_CODEC_ID_VORBIS },
+            { QMediaFormat::AudioCodec::Wave, AV_CODEC_ID_PCM_S16LE },
+            { QMediaFormat::AudioCodec::WMA, AV_CODEC_ID_WMAPRO },
+            { QMediaFormat::AudioCodec::ALAC, AV_CODEC_ID_ALAC },
+        };
+
+AVCodecID codecId(QMediaFormat::AudioCodec codec)
+{
+    static const QVarLengthFlatMap<QMediaFormat::AudioCodec, AVCodecID, audioCodecMap.size()> map(
+            audioCodecMap.begin(), audioCodecMap.end());
+    const auto it = map.find(codec);
+    return it != map.end() ? it->second : AV_CODEC_ID_NONE;
+}
+
+QMediaFormat::AudioCodec audioCodecFromId(AVCodecID id)
+{
+    using namespace QtMultimediaPrivate;
+
+    static const auto map = makeReverseLookupTable<audioCodecMap.size()>(audioCodecMap);
+
+    const auto it = map.find(id);
+    return it != map.end() ? it->second : QMediaFormat::AudioCodec::Unspecified;
 }
 
 // mimetypes are mostly copied from qmediaformat.cpp. Unfortunately, FFmpeg uses
 // in some cases slightly different mimetypes
-static const struct
+constexpr struct
 {
     QMediaFormat::FileFormat fileFormat;
     const char *mimeType;
     const char *name; // disambiguate if we have several muxers/demuxers
-} map[QMediaFormat::LastFileFormat + 1] = {
+} s_outputFormatMap[] = {
     { QMediaFormat::WMV, "video/x-ms-asf", "asf" },
     { QMediaFormat::AVI, "video/x-msvideo", nullptr },
     { QMediaFormat::Matroska, "video/x-matroska", nullptr },
@@ -86,64 +121,139 @@ static const struct
     { QMediaFormat::FLAC, "audio/x-flac", nullptr },
     { QMediaFormat::MP3, "audio/mpeg", "mp3" },
     { QMediaFormat::Wave, "audio/x-wav", nullptr },
-    { QMediaFormat::UnspecifiedFormat, nullptr, nullptr }
+    { QMediaFormat::Ogg, "audio/ogg", nullptr },
 };
 
-template <typename AVFormat>
-static QMediaFormat::FileFormat formatForAVFormat(AVFormat *format)
+QMediaFormat::FileFormat formatForAVFormat(const AVOutputFormat *format)
 {
-
     if (!format->mime_type || !*format->mime_type)
         return QMediaFormat::UnspecifiedFormat;
 
-    auto *m = map;
-    while (m->fileFormat != QMediaFormat::UnspecifiedFormat) {
-        if (m->mimeType && !strcmp(m->mimeType, format->mime_type)) {
+    for (const auto &m : s_outputFormatMap) {
+        if (!strcmp(m.mimeType, format->mime_type)) {
             // check if the name matches. This is used to disambiguate where FFmpeg provides
             // multiple muxers or demuxers
-            if (!m->name || !strcmp(m->name, format->name))
-                return m->fileFormat;
+            if (!m.name || !strcmp(m.name, format->name))
+                return m.fileFormat;
         }
-        ++m;
     }
-
     return QMediaFormat::UnspecifiedFormat;
 }
 
-static const AVOutputFormat *avFormatForFormat(QMediaFormat::FileFormat format)
+const AVOutputFormat *avFormatForFormat(QMediaFormat::FileFormat format)
 {
     if (format == QMediaFormat::QuickTime || format == QMediaFormat::Mpeg4Audio)
         format = QMediaFormat::MPEG4;
     if (format == QMediaFormat::WMA)
         format = QMediaFormat::WMV;
 
-    auto *m = map;
-    while (m->fileFormat != QMediaFormat::UnspecifiedFormat) {
-        if (m->fileFormat == format)
-            return av_guess_format(m->name, nullptr, m->mimeType);
-        ++m;
+    for (const auto &m : s_outputFormatMap) {
+        if (m.fileFormat == format)
+            return av_guess_format(m.name, nullptr, m.mimeType);
     }
 
     return nullptr;
 }
 
+// Seems like FFmpeg uses different names for muxers and demuxers of the same format.
+// that makes it somewhat cumbersome to detect things correctly.
+// The input formats have a comma separated list of short names. We check the first one of those
+// as the docs specify that you only append to the list
+constexpr struct
+{
+    QMediaFormat::FileFormat fileFormat;
+    QLatin1String name;
+} s_inputFormatMap[] = {
+    { QMediaFormat::WMV, "asf"_L1 },
+    { QMediaFormat::AVI, "avi"_L1 },
+    { QMediaFormat::Matroska, "matroska"_L1 },
+    { QMediaFormat::MPEG4, "mov"_L1 },
+    { QMediaFormat::Ogg, "ogg"_L1 },
+    { QMediaFormat::WebM, "webm"_L1 },
+    // Audio Formats
+    // Mpeg4Audio is the same as MP4 without the video codecs
+    { QMediaFormat::AAC, "aac"_L1 },
+    // WMA is the same as WMV
+    { QMediaFormat::FLAC, "flac"_L1 },
+    { QMediaFormat::MP3, "mp3"_L1 },
+    { QMediaFormat::Wave, "wav"_L1 },
+};
+
+QMediaFormat::FileFormat formatForAVInputFormat(const AVInputFormat &format)
+{
+    if (!format.name)
+        return QMediaFormat::UnspecifiedFormat;
+
+    const QLatin1String formatName(format.name);
+    for (const auto &m : s_inputFormatMap) {
+        if (formatName.startsWith(m.name))
+            return m.fileFormat;
+    }
+
+    return QMediaFormat::UnspecifiedFormat;
+}
+
+enum class CodecType : uint8_t {
+    Audio,
+    Video,
+};
+
+template <CodecType Type>
+bool codecSupportsFormat(const AVOutputFormat *format, AVCodecID codecId)
+{
+    const int result = avformat_query_codec(format, codecId, FF_COMPLIANCE_NORMAL);
+    switch (result) {
+    case 1:
+        return true;
+    case AVERROR_PATCHWELCOME:
+    case 0:
+        return false;
+    default:
+        break;
+    }
+
+    if (result < 0) {
+        // A negative result means that the codec may work, but information is unavailable
+        switch (Type) {
+        case CodecType::Audio:
+            return codecId == format->audio_codec;
+        case CodecType::Video:
+            return codecId == format->video_codec;
+        }
+    }
+
+    return false;
+}
 
 QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
 {
-    qCDebug(qLcMediaFormatInfo) << ">>>> listing codecs";
+    namespace ranges = QtMultimediaPrivate::ranges;
+    namespace views = QtMultimediaPrivate::views;
 
-    QList<QMediaFormat::AudioCodec> audioEncoders;
-    QList<QMediaFormat::AudioCodec> extraAudioDecoders;
-    QList<QMediaFormat::VideoCodec> videoEncoders;
-    QList<QMediaFormat::VideoCodec> extraVideoDecoders;
+    using VideoCodec = QMediaFormat::VideoCodec;
+    using AudioCodec = QMediaFormat::AudioCodec;
 
-    const AVCodecDescriptor *descriptor = nullptr;
-    while ((descriptor = avcodec_descriptor_next(descriptor))) {
-        const bool canEncode = QFFmpeg::findAVEncoder(descriptor->id) != nullptr;
-        const bool canDecode = QFFmpeg::findAVDecoder(descriptor->id) != nullptr;
-        auto videoCodec = videoCodecForAVCodecId(descriptor->id);
-        auto audioCodec = audioCodecForAVCodecId(descriptor->id);
-        if (descriptor->type == AVMEDIA_TYPE_VIDEO && videoCodec != QMediaFormat::VideoCodec::Unspecified) {
+    QList<AudioCodec> audioEncoders; // All audio encoders that Qt support
+    QList<AudioCodec> extraAudioDecoders; // All audio decoders that do not support encoding
+    QList<VideoCodec> videoEncoders; // All video encoders that Qt support
+    QList<VideoCodec> extraVideoDecoders; // All video decoders that do not support encoding
+    using Descriptors =
+            QFFmpeg::FFmpegValueIteratorRange<const AVCodecDescriptor *, avcodec_descriptor_next>;
+
+    // Sort all FFmpeg's codecs into the buckets
+    for (const AVCodecDescriptor *descriptor : Descriptors{}) {
+
+        const bool canEncode{ QFFmpeg::findAVEncoder(descriptor->id).has_value() };
+        const bool canDecode{ QFFmpeg::findAVDecoder(descriptor->id).has_value() };
+        const bool isAVCodec = canEncode || canDecode;
+
+        if (!isAVCodec)
+            continue; // subtitle codec
+
+        const VideoCodec videoCodec = videoCodecForAVCodecId(descriptor->id);
+        const AudioCodec audioCodec = audioCodecForAVCodecId(descriptor->id);
+
+        if (descriptor->type == AVMEDIA_TYPE_VIDEO && videoCodec != VideoCodec::Unspecified) {
             if (canEncode) {
                 if (!videoEncoders.contains(videoCodec))
                     videoEncoders.append(videoCodec);
@@ -151,8 +261,7 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
                 if (!extraVideoDecoders.contains(videoCodec))
                     extraVideoDecoders.append(videoCodec);
             }
-        } else if (descriptor->type == AVMEDIA_TYPE_AUDIO
-                   && audioCodec != QMediaFormat::AudioCodec::Unspecified) {
+        } else if (descriptor->type == AVMEDIA_TYPE_AUDIO && audioCodec != AudioCodec::Unspecified) {
             if (canEncode) {
                 if (!audioEncoders.contains(audioCodec))
                     audioEncoders.append(audioCodec);
@@ -163,43 +272,31 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
         }
     }
 
-    // get demuxers
-//    qCDebug(qLcMediaFormatInfo) << ">>>> Muxers";
-    void *opaque = nullptr;
-    const AVOutputFormat *outputFormat = nullptr;
-    while ((outputFormat = av_muxer_iterate(&opaque))) {
-        auto mediaFormat = formatForAVFormat(outputFormat);
+    // Update 'encoders' list with muxer/encoder combinations that Qt supports
+    using MuxerRange = QFFmpeg::FFmpegOpaqueIteratorRange<const AVOutputFormat *, av_muxer_iterate>;
+    for (const AVOutputFormat *outputFormat : MuxerRange()) {
+        QMediaFormat::FileFormat mediaFormat = formatForAVFormat(outputFormat);
         if (mediaFormat == QMediaFormat::UnspecifiedFormat)
             continue;
-//        qCDebug(qLcMediaFormatInfo) << "    mux:" << outputFormat->name << outputFormat->long_name << outputFormat->mime_type << outputFormat->extensions << mediaFormat;
 
         CodecMap encoder;
         encoder.format = mediaFormat;
 
-        for (auto codec : audioEncoders) {
-            auto id = codecId(codec);
-            // only add the codec if it can be used with this container
-            int result = avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL);
-            if (result == 1 || (result < 0 && id == outputFormat->audio_codec)) {
-                // add codec for container
-//                qCDebug(qLcMediaFormatInfo) << "        " << codec << Qt::hex << av_codec_get_tag(outputFormat->codec_tag, id);
-                encoder.audio.append(codec);
-            }
-        }
-        for (auto codec : videoEncoders) {
-            auto id = codecId(codec);
-            // only add the codec if it can be used with this container
-            int result = avformat_query_codec(outputFormat, id, FF_COMPLIANCE_NORMAL);
-            if (result == 1 || (result < 0 && id == outputFormat->video_codec)) {
-                // add codec for container
-//                qCDebug(qLcMediaFormatInfo) << "        " << codec << Qt::hex << av_codec_get_tag(outputFormat->codec_tag, id);
-                encoder.video.append(codec);
-            }
-        }
+        auto supportedAudioCodecs = audioEncoders | views::filter([&](AudioCodec codec) {
+            return codecSupportsFormat<CodecType::Audio>(outputFormat, codecId(codec));
+        });
+        encoder.audio = supportedAudioCodecs | ranges::to<QList<AudioCodec>>();
 
-        // sanity checks and handling special cases
+        auto supportedVideoCodecs = videoEncoders | views::filter([&](VideoCodec codec) {
+            return codecSupportsFormat<CodecType::Video>(outputFormat, codecId(codec));
+        });
+        encoder.video = supportedVideoCodecs | ranges::to<QList<VideoCodec>>();
+
+        // If no encoders support either audio or video, we skip this format.
         if (encoder.audio.isEmpty() && encoder.video.isEmpty())
             continue;
+
+        // Handle special cases
         switch (encoder.format) {
         case QMediaFormat::WMV:
             // add WMA
@@ -212,44 +309,68 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
             break;
         case QMediaFormat::Wave:
             // FFmpeg allows other encoded formats in WAV containers, but we do not want that
-            if (!encoder.audio.contains(QMediaFormat::AudioCodec::Wave))
+            if (!encoder.audio.contains(AudioCodec::Wave))
                 continue;
-            encoder.audio = { QMediaFormat::AudioCodec::Wave };
+            encoder.audio = { AudioCodec::Wave };
             break;
         default:
             break;
         }
+
         encoders.append(encoder);
     }
 
-    // FFmpeg doesn't allow querying supported codecs for decoders
-    // we take a simple approximation stating that we can decode what we
+    // FFmpeg doesn't allow querying supported codecs for demuxers.
+    // We take a simple approximation stating that we can decode what we
     // can encode. That's a safe subset.
     decoders = encoders;
 
-#ifdef Q_OS_WINDOWS
-    // MediaFoundation HVEC encoder fails when processing frames
-    for (auto &encoder : encoders) {
-        auto h265index = encoder.video.indexOf(QMediaFormat::VideoCodec::H265);
-        if (h265index >= 0)
-            encoder.video.removeAt(h265index);
+    if constexpr (QOperatingSystemVersion::currentType() == QOperatingSystemVersion::Windows) {
+        // MediaFoundation HVEC encoder fails when processing frames
+        for (auto &encoder : encoders) {
+            auto h265index = encoder.video.indexOf(VideoCodec::H265);
+            if (h265index >= 0)
+                encoder.video.removeAt(h265index);
+        }
     }
-#endif
 
-//    qCDebug(qLcMediaFormatInfo) << "extraDecoders:" << extraAudioDecoders << extraVideoDecoders;
-    // FFmpeg can currently only decode WMA and WMV, not encode
-    if (extraAudioDecoders.contains(QMediaFormat::AudioCodec::WMA)) {
-        decoders[QMediaFormat::WMA].audio.append(QMediaFormat::AudioCodec::WMA);
-        decoders[QMediaFormat::WMV].audio.append(QMediaFormat::AudioCodec::WMA);
+    // FFmpeg's Matroska muxer does not work with H264 video codec
+    for (auto &encoder : encoders) {
+        if (encoder.format == QMediaFormat::Matroska) {
+            encoder.video.removeAll(VideoCodec::H264);
+
+            // And on macOS, also not with H265
+            if constexpr (QOperatingSystemVersion::currentType()
+                          == QOperatingSystemVersion::MacOS) {
+                encoder.video.removeAll(VideoCodec::H265);
+            }
+        }
     }
-    if (extraVideoDecoders.contains(QMediaFormat::VideoCodec::WMV)) {
-        decoders[QMediaFormat::WMV].video.append(QMediaFormat::VideoCodec::WMV);
+
+    // FFmpeg can currently only decode WMA and WMV, not encode
+    auto findDecoder = [&](QMediaFormat::FileFormat fmt) -> CodecMap * {
+        auto it = ranges::find_if(decoders, [&](const CodecMap &m) {
+            return m.format == fmt;
+        });
+        return it != decoders.end() ? &*it : nullptr;
+    };
+
+    if (extraAudioDecoders.contains(AudioCodec::WMA)) {
+        if (auto *wma = findDecoder(QMediaFormat::WMA))
+            wma->audio.append(AudioCodec::WMA);
+        if (auto *wmv = findDecoder(QMediaFormat::WMV))
+            wmv->audio.append(AudioCodec::WMA);
+    }
+
+    if (extraVideoDecoders.contains(VideoCodec::WMV)) {
+        if (auto *wmv = findDecoder(QMediaFormat::WMV))
+            wmv->video.append(VideoCodec::WMV);
     }
 
     // Add image formats we support. We currently simply use Qt's built-in image write
     // to save images. That doesn't give us HDR support or support for larger bit depths,
     // but most cameras can currently not generate those anyway.
-    const auto imgFormats = QImageWriter::supportedImageFormats();
+    const QList<QByteArray> imgFormats = QImageWriter::supportedImageFormats();
     for (const auto &f : imgFormats) {
         if (f == "png")
             imageFormats.append(QImageCapture::PNG);
@@ -261,67 +382,25 @@ QFFmpegMediaFormatInfo::QFFmpegMediaFormatInfo()
             imageFormats.append(QImageCapture::WebP);
     }
 
+    fixupCodecMaps();
 }
 
 QFFmpegMediaFormatInfo::~QFFmpegMediaFormatInfo() = default;
 
 QMediaFormat::AudioCodec QFFmpegMediaFormatInfo::audioCodecForAVCodecId(AVCodecID id)
 {
-    for (const auto &c : audioCodecMap) {
-        if (c.id == id)
-            return c.codec;
-    }
-    return QMediaFormat::AudioCodec::Unspecified;
+    return audioCodecFromId(id);
 }
 
 QMediaFormat::VideoCodec QFFmpegMediaFormatInfo::videoCodecForAVCodecId(AVCodecID id)
 {
-    for (const auto &c : videoCodecMap) {
-        if (c.id == id)
-            return c.codec;
-    }
-    return QMediaFormat::VideoCodec::Unspecified;
+    return videoCodecFromId(id);
 }
 
 QMediaFormat::FileFormat
-QFFmpegMediaFormatInfo::fileFormatForAVInputFormat(const AVInputFormat *format)
+QFFmpegMediaFormatInfo::fileFormatForAVInputFormat(const AVInputFormat &format)
 {
-    // Seems like FFmpeg uses different names for muxers and demuxers of the same format.
-    // that makes it somewhat cumbersome to detect things correctly.
-    // The input formats have a comma separated list of short names. We check the first one of those
-    // as the docs specify that you only append to the list
-    static const struct
-    {
-        QMediaFormat::FileFormat fileFormat;
-        const char *name;
-    } map[QMediaFormat::LastFileFormat + 1] = {
-        { QMediaFormat::WMV, "asf" },
-        { QMediaFormat::AVI, "avi" },
-        { QMediaFormat::Matroska, "matroska" },
-        { QMediaFormat::MPEG4, "mov" },
-        { QMediaFormat::Ogg, "ogg" },
-        { QMediaFormat::WebM, "webm" },
-        // Audio Formats
-        // Mpeg4Audio is the same as MP4 without the video codecs
-        { QMediaFormat::AAC, "aac"},
-        // WMA is the same as WMV
-        { QMediaFormat::FLAC, "flac" },
-        { QMediaFormat::MP3, "mp3" },
-        { QMediaFormat::Wave, "wav" },
-        { QMediaFormat::UnspecifiedFormat, nullptr }
-    };
-
-    if (!format->name)
-        return QMediaFormat::UnspecifiedFormat;
-
-    auto *m = map;
-    while (m->fileFormat != QMediaFormat::UnspecifiedFormat) {
-        if (!strncmp(m->name, format->name, strlen(m->name)))
-            return m->fileFormat;
-        ++m;
-    }
-
-    return QMediaFormat::UnspecifiedFormat;
+    return formatForAVInputFormat(format);
 }
 
 const AVOutputFormat *
@@ -424,8 +503,6 @@ int64_t QFFmpegMediaFormatInfo::avChannelLayout(QAudioFormat::ChannelConfig chan
         avChannelLayout |= AV_CH_TOP_BACK_RIGHT;
     if (channelConfig & (1 << QAudioFormat::TopBackCenter))
         avChannelLayout |= AV_CH_TOP_BACK_CENTER;
-    // The defines used below got added together for FFmpeg 4.4
-#ifdef AV_CH_TOP_SIDE_LEFT
     if (channelConfig & (1 << QAudioFormat::TopSideLeft))
         avChannelLayout |= AV_CH_TOP_SIDE_LEFT;
     if (channelConfig & (1 << QAudioFormat::TopSideRight))
@@ -436,7 +513,6 @@ int64_t QFFmpegMediaFormatInfo::avChannelLayout(QAudioFormat::ChannelConfig chan
         avChannelLayout |= AV_CH_BOTTOM_FRONT_LEFT;
     if (channelConfig & (1 << QAudioFormat::BottomFrontRight))
         avChannelLayout |= AV_CH_BOTTOM_FRONT_RIGHT;
-#endif
     return avChannelLayout;
 }
 
@@ -481,8 +557,6 @@ QAudioFormat::ChannelConfig QFFmpegMediaFormatInfo::channelConfigForAVLayout(int
         channelConfig |= QAudioFormat::channelConfig(QAudioFormat::TopBackRight);
     if (avChannelLayout & AV_CH_TOP_BACK_CENTER)
         channelConfig |= QAudioFormat::channelConfig(QAudioFormat::TopBackCenter);
-        // The defines used below got added together for FFmpeg 4.4
-#ifdef AV_CH_TOP_SIDE_LEFT
     if (avChannelLayout & AV_CH_TOP_SIDE_LEFT)
         channelConfig |= QAudioFormat::channelConfig(QAudioFormat::TopSideLeft);
     if (avChannelLayout & AV_CH_TOP_SIDE_RIGHT)
@@ -493,25 +567,25 @@ QAudioFormat::ChannelConfig QFFmpegMediaFormatInfo::channelConfigForAVLayout(int
         channelConfig |= QAudioFormat::channelConfig(QAudioFormat::BottomFrontLeft);
     if (avChannelLayout & AV_CH_BOTTOM_FRONT_RIGHT)
         channelConfig |= QAudioFormat::channelConfig(QAudioFormat::BottomFrontRight);
-#endif
     return QAudioFormat::ChannelConfig(channelConfig);
 }
 
-QAudioFormat QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(AVCodecParameters *codecpar)
+QAudioFormat
+QFFmpegMediaFormatInfo::audioFormatFromCodecParameters(const AVCodecParameters &codecpar)
 {
     QAudioFormat format;
-    format.setSampleFormat(sampleFormat(AVSampleFormat(codecpar->format)));
-    format.setSampleRate(codecpar->sample_rate);
-#if QT_FFMPEG_OLD_CHANNEL_LAYOUT
-    uint64_t channelLayout = codecpar->channel_layout;
-    if (!channelLayout)
-        channelLayout = avChannelLayout(QAudioFormat::defaultChannelConfigForChannelCount(codecpar->channels));
-#else
+    format.setSampleFormat(sampleFormat(AVSampleFormat(codecpar.format)));
+    format.setSampleRate(codecpar.sample_rate);
+#if QT_FFMPEG_HAS_AV_CHANNEL_LAYOUT
     uint64_t channelLayout = 0;
-    if (codecpar->ch_layout.order == AV_CHANNEL_ORDER_NATIVE)
-        channelLayout = codecpar->ch_layout.u.mask;
+    if (codecpar.ch_layout.order == AV_CHANNEL_ORDER_NATIVE)
+        channelLayout = codecpar.ch_layout.u.mask;
     else
-        channelLayout = avChannelLayout(QAudioFormat::defaultChannelConfigForChannelCount(codecpar->ch_layout.nb_channels));
+        channelLayout = avChannelLayout(QAudioFormat::defaultChannelConfigForChannelCount(codecpar.ch_layout.nb_channels));
+#else
+    uint64_t channelLayout = codecpar.channel_layout;
+    if (!channelLayout)
+        channelLayout = avChannelLayout(QAudioFormat::defaultChannelConfigForChannelCount(codecpar.channels));
 #endif
     format.setChannelConfig(channelConfigForAVLayout(channelLayout));
     return format;

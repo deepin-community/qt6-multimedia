@@ -13,13 +13,14 @@
 //
 // We mean it.
 //
-#include "playbackengine/qffmpegplaybackengineobject_p.h"
-#include "playbackengine/qffmpegframe_p.h"
-#include "playbackengine/qffmpegpacket_p.h"
-#include "playbackengine/qffmpegpositionwithoffset_p.h"
-#include "private/qplatformmediaplayer_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackengineobject_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegframe_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegpacket_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegplaybackutils_p.h>
+#include <QtMultimedia/private/qplatformmediaplayer_p.h>
 
-#include <optional>
+#include <QtCore/qqueue.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -29,9 +30,12 @@ class StreamDecoder : public PlaybackEngineObject
 {
     Q_OBJECT
 public:
-    StreamDecoder(const Codec &codec, qint64 absSeekPos);
+    StreamDecoder(const PlaybackEngineObjectID &id, const CodecContext &codecContext,
+                  TrackPosition absSeekPos);
 
-    ~StreamDecoder();
+    ~StreamDecoder() override;
+
+    void seek(quint64 sessionID, TrackPosition pos, const LoopOffset &offset);
 
     QPlatformMediaPlayer::TrackType trackType() const;
 
@@ -39,13 +43,12 @@ public:
     static qint32 maxQueueSize(QPlatformMediaPlayer::TrackType type);
 
 public slots:
-    void setInitialPosition(TimePoint tp, qint64 trackPos);
 
     void decode(Packet);
 
-    void onFinalPacketReceived();
+    void onFinalPacketReceived(PlaybackEngineObjectID sourceID);
 
-    void onFrameProcessed(Frame frame);
+    void onFrameProcessed(const Frame &frame);
 
 signals:
     void requestHandleFrame(Frame frame);
@@ -58,27 +61,33 @@ protected:
     void doNextStep() override;
 
 private:
-    void decodeMedia(Packet);
+    void decodeMedia(const Packet &packet);
 
-    void decodeSubtitle(Packet);
+    void decodeSubtitle(const Packet &packet);
 
-    void onFrameFound(Frame frame);
+    void onFrameFound(const Frame &frame);
 
-    int sendAVPacket(Packet);
+    int sendAVPacket(const Packet &packet);
 
     void receiveAVFrames(bool flushPacket = false);
 
 private:
-    Codec m_codec;
-    qint64 m_absSeekPos = 0;
+    CodecContext m_codecContext;
+
     const QPlatformMediaPlayer::TrackType m_trackType;
 
-    qint32 m_pendingFramesCount = 0;
+    struct SessionContext
+    {
+        TrackPosition absSeekPos = TrackPosition(0);
+        qint32 pendingFramesCount = 0;
+        LoopOffset offset = {};
+        QQueue<Packet> packets = {};
+    };
 
-    LoopOffset m_offset;
-
-    QQueue<Packet> m_packets;
+    SessionContext m_sessionCtx;
 };
+
+QString subtitleTextFromAVSubtitle(const AVSubtitle &subtitle);
 
 } // namespace QFFmpeg
 

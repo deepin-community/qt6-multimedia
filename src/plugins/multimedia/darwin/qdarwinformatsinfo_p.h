@@ -15,18 +15,18 @@
 // We mean it.
 //
 
-#include <private/qplatformmediaformatinfo_p.h>
-#include <qlist.h>
+#include <QtMultimedia/private/qplatformmediaformatinfo_p.h>
+#include <QtCore/qlist.h>
 
 QT_BEGIN_NAMESPACE
 
-class QDarwinMediaDevices;
+class QDarwinAudioDevices;
 
 class QDarwinFormatInfo : public QPlatformMediaFormatInfo
 {
 public:
     QDarwinFormatInfo();
-    ~QDarwinFormatInfo();
+    ~QDarwinFormatInfo() override;
 
     static int audioFormatForCodec(QMediaFormat::AudioCodec codec);
     static NSString *videoFormatForCodec(QMediaFormat::VideoCodec codec);

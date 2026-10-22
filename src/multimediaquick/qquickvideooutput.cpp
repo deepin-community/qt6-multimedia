@@ -1,22 +1,27 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // Copyright (C) 2016 Research In Motion
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
+
 #include "qquickvideooutput_p.h"
 
-#include <private/qvideooutputorientationhandler_p.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qrunnable.h>
+#include <QtCore/private/qfactoryloader_p.h>
+
 #include <QtMultimedia/qmediaplayer.h>
 #include <QtMultimedia/qmediacapturesession.h>
-#include <private/qfactoryloader_p.h>
-#include <QtCore/qloggingcategory.h>
-#include <QtQuick/QQuickWindow>
-#include <private/qquickwindow_p.h>
-#include <private/qmultimediautils_p.h>
-#include <qsgvideonode_p.h>
-#include <QtCore/qrunnable.h>
+#include <QtMultimedia/private/qmultimediautils_p.h>
+#include <QtMultimedia/private/qvideoframetexturepool_p.h>
+#include <QtMultimedia/private/qvideooutputorientationhandler_p.h>
+
+#include <QtMultimediaQuick/private/qsgvideonode_p.h>
+
+#include <QtQuick/qquickwindow.h>
+#include <QtQuick/private/qquickwindow_p.h>
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
+Q_STATIC_LOGGING_CATEGORY(qLcVideo, "qt.multimedia.video")
 
 namespace {
 
@@ -29,24 +34,12 @@ inline bool qIsDefaultAspect(QtVideo::Rotation rotation)
 {
     return qIsDefaultAspect(qToUnderlying(rotation));
 }
-
-/*
- * Return the orientation normalized to 0-359
- */
-inline int qNormalizedOrientation(int o)
-{
-    // Negative orientations give negative results
-    int o2 = o % 360;
-    if (o2 < 0)
-        o2 += 360;
-    return o2;
-}
-
 }
 
 /*!
     \qmltype VideoOutput
     //! \nativetype QQuickVideoOutput
+    \inherits Item
     \brief Render video or camera viewfinder.
 
     \ingroup multimedia_qml
@@ -111,11 +104,13 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 
     m_sink = new QQuickVideoSink(this);
     qRegisterMetaType<QVideoFrameFormat>();
+
+    // TODO: investigate if we have any benefit of setting frame in the source thread
     connect(m_sink, &QVideoSink::videoFrameChanged, this,
-            [this](const QVideoFrame &frame) {
-                setFrame(frame);
-                QMetaObject::invokeMethod(this, &QQuickVideoOutput::_q_newFrame, frame.size());
-            },
+            makeGuardedCall([this](const QVideoFrame &frame) {
+        if (frame.isValid() || m_endOfStreamPolicy == ClearOutput)
+            setFrame(frame);
+    }),
             Qt::DirectConnection);
 
     initRhiForSink();
@@ -123,6 +118,13 @@ QQuickVideoOutput::QQuickVideoOutput(QQuickItem *parent) :
 
 QQuickVideoOutput::~QQuickVideoOutput()
 {
+    {
+        QMutexLocker lock(&m_destructorGuard->m_mutex);
+        m_destructorGuard->m_isAlive = false;
+    }
+
+    delete m_sink;
+    disconnectWindowConnections();
 }
 
 /*!
@@ -227,18 +229,27 @@ void QQuickVideoOutput::_q_updateGeometry()
 /*!
     \qmlproperty int QtMultimedia::VideoOutput::orientation
 
-    In some cases the source video stream requires a certain
-    orientation to be correct.  This includes
+    This property determines the angle in, degrees, at which the displayed video
+    is rotated clockwise in video coordinates, where the Y-axis points
+    downwards on the display.
+    The orientation transformation is applied before \l mirrored.
+
+    The orientation change affects the mapping of coordinates from the source to the viewport.
+
+    Only multiples of \c 90 degrees are supported, that is 0, 90, -90, 180, 270, etc.,
+    otherwise, the specified value is ignored.
+
+    In some cases, the source video stream requires a certain
+    orientation to be corrected. This includes
     sources like a camera viewfinder, where the displayed
-    viewfinder should match reality, no matter what rotation
+    viewfinder should match the reality, no matter what rotation
     the rest of the user interface has.
 
-    This property allows you to apply a rotation (in steps
-    of 90 degrees) to compensate for any user interface
-    rotation, with positive values in the anti-clockwise direction.
+    We recommend using this property to compensate a user interface
+    rotation, or align the output view with other application business
+    requirements.
 
-    The orientation change will also affect the mapping
-    of coordinates from source to viewport.
+    The default value is \c 0.
 */
 int QQuickVideoOutput::orientation() const
 {
@@ -257,7 +268,7 @@ void QQuickVideoOutput::setOrientation(int orientation)
 
     // If the new orientation is the same effect
     // as the old one, don't update the video node stuff
-    if ((m_orientation % 360) == (orientation % 360)) {
+    if (qVideoRotationFromDegrees(orientation - m_orientation) == QtVideo::Rotation::None) {
         m_orientation = orientation;
         emit orientationChanged();
         return;
@@ -291,6 +302,34 @@ void QQuickVideoOutput::setOrientation(int orientation)
 }
 
 /*!
+    \qmlproperty bool QtMultimedia::VideoOutput::mirrored
+    \since 6.9
+
+    Determines whether the displayed video is mirrored around its vertical axis.
+    We recommend using this property if the transformation of the source video stream,
+    such as from a front camera, does not align with the application's business logic.
+    The mirroring is applied after \l orientation.
+
+    The property change affects the mapping of coordinates from the source to the viewport.
+
+    The default value is \c false.
+*/
+bool QQuickVideoOutput::mirrored() const
+{
+    return m_mirrored;
+}
+
+void QQuickVideoOutput::setMirrored(bool mirrored)
+{
+    if (m_mirrored == mirrored)
+        return;
+    m_mirrored = mirrored;
+
+    update();
+    emit mirroredChanged();
+}
+
+/*!
     \qmlproperty rectangle QtMultimedia::VideoOutput::contentRect
 
     This property holds the item coordinates of the area that
@@ -307,6 +346,50 @@ void QQuickVideoOutput::setOrientation(int orientation)
 QRectF QQuickVideoOutput::contentRect() const
 {
     return m_contentRect;
+}
+
+/*!
+    \qmlproperty enumeration QtMultimedia::VideoOutput::endOfStreamPolicy
+    \since 6.9
+
+    This property specifies the policy to apply when the video stream ends. This
+    occurs at the end of media playback or upon deactivation of the camera, screen,
+    or window capture.
+
+    The \c endOfStreamPolicy can be one of:
+
+    \value ClearOutput The video output is cleared.
+    \value KeepLastFrame The video output continues displaying the
+           last frame. Use the method \l clearOutput() to clear the output manually.
+
+    The default value is \c ClearOutput.
+*/
+QQuickVideoOutput::EndOfStreamPolicy QQuickVideoOutput::endOfStreamPolicy() const
+{
+    return m_endOfStreamPolicy;
+}
+
+void QQuickVideoOutput::setEndOfStreamPolicy(EndOfStreamPolicy policy)
+{
+    if (m_endOfStreamPolicy == policy)
+        return;
+
+    m_endOfStreamPolicy = policy;
+    emit endOfStreamPolicyChanged(policy);
+}
+
+/*!
+    \qmlmethod void QtMultimedia::VideoOutput::clearOutput()
+    \since 6.9
+
+    Clears the video output by removing the currently displayed video frame.
+    This method is recommended when you need to remove the last video frame after
+    detaching the video output from the source or after the source stream ends
+    with the video output's \l endOfStreamPolicy property set to \c KeepLastFrame.
+*/
+void QQuickVideoOutput::clearOutput()
+{
+    setFrame({});
 }
 
 /*!
@@ -359,27 +442,11 @@ void QQuickVideoOutput::geometryChange(const QRectF &newGeometry, const QRectF &
     _q_updateGeometry();
 }
 
-void QQuickVideoOutput::_q_invalidateSceneGraph()
-{
-    invalidateSceneGraph();
-}
-
-void QQuickVideoOutput::_q_sceneGraphInitialized()
-{
-    initRhiForSink();
-}
-
 void QQuickVideoOutput::releaseResources()
 {
     // Called on the gui thread when the window is closed or changed.
-    invalidateSceneGraph();
-}
-
-void QQuickVideoOutput::invalidateSceneGraph()
-{
-    // Called on the render thread, e.g. when the context is lost.
-    //    QMutexLocker lock(&m_frameMutex);
     initRhiForSink();
+    QQuickItem::releaseResources();
 }
 
 void QQuickVideoOutput::initRhiForSink()
@@ -396,16 +463,31 @@ void QQuickVideoOutput::itemChange(QQuickItem::ItemChange change,
 
     if (changeData.window == m_window)
         return;
-    if (m_window)
-        disconnect(m_window);
+
+    disconnectWindowConnections();
     m_window = changeData.window;
 
     if (m_window) {
+        auto connectToWindow = [&](auto signal, auto function) {
+            connect(m_window, signal, this, makeGuardedCall(std::move(function)),
+                    Qt::DirectConnection);
+        };
+
         // We want to receive the signals in the render thread
-        connect(m_window, &QQuickWindow::sceneGraphInitialized, this,
-                &QQuickVideoOutput::_q_sceneGraphInitialized, Qt::DirectConnection);
-        connect(m_window, &QQuickWindow::sceneGraphInvalidated, this,
-                &QQuickVideoOutput::_q_invalidateSceneGraph, Qt::DirectConnection);
+        connectToWindow(&QQuickWindow::sceneGraphInitialized, [this] {
+            initRhiForSink();
+        });
+
+        connectToWindow(&QQuickWindow::sceneGraphInvalidated, [this] {
+            if (auto texturePool = m_texturePool.lock())
+                texturePool->clearTextures();
+            m_sink->setRhi(nullptr);
+        });
+
+        connectToWindow(&QQuickWindow::afterFrameEnd, [this] {
+            if (auto texturePool = m_texturePool.lock())
+                texturePool->onFrameEndInvoked();
+        });
     }
     initRhiForSink();
 }
@@ -487,7 +569,9 @@ QSGNode *QQuickVideoOutput::updatePaintNode(QSGNode *oldNode,
             // Get a node that supports our frame. The surface is irrelevant, our
             // QSGVideoItemSurface supports (logically) anything.
             updateGeometry();
-            videoNode = new QSGVideoNode(this, m_videoFormat);
+            QRhi *rhi = m_window ? QQuickWindowPrivate::get(m_window)->rhi : nullptr;
+            videoNode = new QSGVideoNode(this, m_videoFormat, rhi);
+            m_texturePool = videoNode->texturePool();
             qCDebug(qLcVideo) << "updatePaintNode: Video node created. Handle type:" << m_frame.handleType();
         }
     }
@@ -508,9 +592,9 @@ QSGNode *QQuickVideoOutput::updatePaintNode(QSGNode *oldNode,
         m_frame = QVideoFrame();
     }
 
-    // Negative rotations need lots of %360
-    videoNode->setTexturedRectGeometry(m_renderedRect, m_sourceTextureRect,
-                                       qNormalizedOrientation(orientation()));
+    videoNode->setTexturedRectGeometry(
+            m_renderedRect, m_sourceTextureRect,
+            VideoTransformation{ qVideoRotationFromDegrees(orientation()), m_mirrored });
 
     return videoNode;
 }
@@ -543,6 +627,14 @@ void QQuickVideoOutput::updateHdr(QSGVideoNode *videoNode)
     videoNode->setHdrInfo(swapChain->hdrInfo());
 }
 
+void QQuickVideoOutput::disconnectWindowConnections()
+{
+    if (!m_window)
+        return;
+
+    m_window->disconnect(this);
+}
+
 QRectF QQuickVideoOutput::adjustedViewport() const
 {
     return m_videoFormat.viewport();
@@ -550,12 +642,22 @@ QRectF QQuickVideoOutput::adjustedViewport() const
 
 void QQuickVideoOutput::setFrame(const QVideoFrame &frame)
 {
-    QMutexLocker lock(&m_frameMutex);
+    {
+        QMutexLocker lock(&m_frameMutex);
 
-    m_videoFormat = frame.surfaceFormat();
-    m_frame = frame;
-    m_frameDisplayingRotation = qNormalizedFrameTransformation(frame, m_orientation).rotation;
-    m_frameChanged = true;
+        m_videoFormat = frame.surfaceFormat();
+        m_frame = frame;
+        m_frameDisplayingRotation = qNormalizedFrameTransformation(frame, m_orientation).rotation;
+        m_frameChanged = true;
+    }
+
+    QMetaObject::invokeMethod(this, &QQuickVideoOutput::_q_newFrame, frame.size());
+}
+
+std::optional<std::chrono::nanoseconds> QQuickVideoOutput::g_signalBackoff;
+void QQuickVideoOutput::setSignalBackoff(std::optional<std::chrono::nanoseconds> ns)
+{
+    g_signalBackoff = ns;
 }
 
 QT_END_NAMESPACE

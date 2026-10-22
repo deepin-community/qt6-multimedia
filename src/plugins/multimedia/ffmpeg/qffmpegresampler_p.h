@@ -15,26 +15,39 @@
 //
 
 #include "qaudiobuffer.h"
-#include "qffmpeg_p.h"
-#include "private/qplatformaudioresampler_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtMultimedia/private/qplatformaudioresampler_p.h>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg
 {
-class Codec;
-}
+class CodecContext;
+} // namespace QFFmpeg
 
 class QFFmpegResampler : public QPlatformAudioResampler
 {
+    QFFmpegResampler(const QAudioFormat &inputFormat, const QAudioFormat &outputFormat,
+                     qint64 startTime);
+    QFFmpegResampler(const QFFmpeg::CodecContext *codecContext, const QAudioFormat &outputFormat,
+                     qint64 startTime);
+
+    template <typename... Args>
+    static std::unique_ptr<QFFmpegResampler> createImpl(Args...);
+
 public:
-    QFFmpegResampler(const QAudioFormat &inputFormat, const QAudioFormat &outputFormat);
-    QFFmpegResampler(const QFFmpeg::Codec *codec, const QAudioFormat &outputFormat,
-                     qint64 startTime = 0);
+    static std::unique_ptr<QFFmpegResampler> createFromInputFormat(const QAudioFormat &input,
+                                                                   const QAudioFormat &output,
+                                                                   qint64 startTime = 0);
+    static std::unique_ptr<QFFmpegResampler> createFromCodecContext(const QFFmpeg::CodecContext *,
+                                                                    const QAudioFormat &output,
+                                                                    qint64 startTime = 0);
 
     ~QFFmpegResampler() override;
 
-    QAudioBuffer resample(const char* data, size_t size) override;
+    bool isInitialized() const;
+
+    QAudioBuffer resample(const char *data, size_t size) override;
 
     QAudioBuffer resample(const AVFrame *frame);
 

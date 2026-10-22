@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaudiobufferinput.h"
-#include "qplatformaudiobufferinput_p.h"
-#include "qmediainputencoderinterface_p.h"
-#include "qmediaframeinput_p.h"
+
+#include <QtMultimedia/private/qmediaframeinput_p.h>
+#include <QtMultimedia/private/qmediainputencoderinterface_p.h>
+#include <QtMultimedia/private/qplatformaudiobufferinput_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -80,7 +81,19 @@ private:
     \brief The QAudioBufferInput class is used for providing custom audio buffers
     to \l QMediaRecorder through \l QMediaCaptureSession.
 
-    \sa QMediaRecorder, QMediaCaptureSession
+    QAudioBufferInput is only supported with the FFmpeg backend.
+
+    \include qmediainput-pull-mode.qdocinc {pull-mode} {QAudioBufferInput} {audio buffer} {sendAudioBuffer} {readyToSendAudioBuffer}
+
+    \snippet custommediainputsnippets/custommediainputsnippets.cpp QAudioBufferInput setup
+
+    Here's a minimal implementation of the slot function that provides audio buffers:
+
+    \snippet custommediainputsnippets/custommediainputsnippets.cpp nextAudioBuffer()
+
+    For more details see readyToSendAudioBuffer() and sendAudioBuffer().
+
+    \sa QMediaRecorder and QMediaCaptureSession.
 */
 
 /*!
@@ -123,7 +136,7 @@ QAudioBufferInput::~QAudioBufferInput()
     which can happen if the instance is not assigned to
     \l QMediaCaptureSession, the session doesn't have a media recorder,
     the media recorder is not started or its queue is full.
-    The signal \l readyToSendAudiobuffer will be sent as soon as
+    The \l readyToSendAudioBuffer() signal will be emitted as soon as
     the destination is able to handle a new audio buffer.
 
     Sending of an empty audio buffer is treated by \l QMediaRecorder

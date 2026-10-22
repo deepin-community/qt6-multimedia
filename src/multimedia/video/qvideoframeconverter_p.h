@@ -17,12 +17,17 @@
 
 #include <qvideoframe.h>
 
+#include <QtCore/qspan.h>
+
 QT_BEGIN_NAMESPACE
 
-struct NormalizedVideoTransformation;
+struct VideoTransformation;
+
+Q_MULTIMEDIA_EXPORT QSpan<const uchar>
+jpegDataFromMappedVideoFrame(const QVideoFrame &mappedFrame);
 
 Q_MULTIMEDIA_EXPORT QImage qImageFromVideoFrame(const QVideoFrame &frame,
-                                                const NormalizedVideoTransformation &transformation,
+                                                const VideoTransformation &transformation,
                                                 bool forceCpu = false);
 
 Q_MULTIMEDIA_EXPORT QImage qImageFromVideoFrame(const QVideoFrame &frame, bool forceCpu = false);

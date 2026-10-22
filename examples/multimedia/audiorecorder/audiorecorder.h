@@ -17,17 +17,12 @@ class QAudioBuffer;
 class QMediaDevices;
 QT_END_NAMESPACE
 
-class AudioLevel;
-
 class AudioRecorder : public QMainWindow
 {
     Q_OBJECT
 
 public:
     AudioRecorder();
-
-public slots:
-    void processBuffer(const QAudioBuffer &);
 
 private slots:
     void init();
@@ -38,12 +33,12 @@ private slots:
     void onStateChanged(QMediaRecorder::RecorderState);
     void updateProgress(qint64 pos);
     void displayErrorMessage();
+    void onMediaFormatChanged();
 
     void updateDevices();
     void updateFormats();
 
 private:
-    void clearAudioLevels();
     QMediaFormat selectedMediaFormat() const;
 
     Ui::AudioRecorder *ui = nullptr;
@@ -52,7 +47,6 @@ private:
     QMediaRecorder *m_audioRecorder = nullptr;
     QMediaDevices *m_mediaDevices = nullptr;
 
-    QList<AudioLevel *> m_audioLevels;
     bool m_outputLocationSet = false;
     bool m_updatingFormats = false;
 };

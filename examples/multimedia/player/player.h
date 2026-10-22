@@ -21,9 +21,11 @@ class QComboBox;
 class QSlider;
 class QStatusBar;
 class QVideoWidget;
+class QAudioBufferOutput;
 QT_END_NAMESPACE
 
 class PlaylistModel;
+class AudioLevelMeter;
 
 class Player : public QWidget
 {
@@ -31,7 +33,7 @@ class Player : public QWidget
 
 public:
     explicit Player(QWidget *parent = nullptr);
-    ~Player() = default;
+    ~Player() override = default;
 
     bool isPlayerAvailable() const;
 
@@ -77,11 +79,14 @@ private:
 
     QMediaPlayer *m_player = nullptr;
     QAudioOutput *m_audioOutput = nullptr;
+    AudioLevelMeter *m_audioLevelMeter = nullptr;
+    QAudioBufferOutput *m_audioBufferOutput = nullptr;
     QMediaPlaylist *m_playlist = nullptr;
     QVideoWidget *m_videoWidget = nullptr;
     QSlider *m_slider = nullptr;
     QLabel *m_labelDuration = nullptr;
     QPushButton *m_fullScreenButton = nullptr;
+    QPushButton *m_pitchCompensationButton = nullptr;
     QComboBox *m_audioOutputCombo = nullptr;
     QLabel *m_statusLabel = nullptr;
     QStatusBar *m_statusBar = nullptr;

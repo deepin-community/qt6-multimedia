@@ -1,15 +1,16 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
+#include "qgstreamervideooutput_p.h"
+
 #include <QtMultimedia/qvideosink.h>
 
 #include <QtCore/qloggingcategory.h>
 
-#include <common/qgstreamervideooutput_p.h>
 #include <common/qgstreamervideosink_p.h>
 #include <common/qgstsubtitlesink_p.h>
 
-static Q_LOGGING_CATEGORY(qLcMediaVideoOutput, "qt.multimedia.videooutput")
+Q_STATIC_LOGGING_CATEGORY(qLcMediaVideoOutput, "qt.multimedia.videooutput");
 
 QT_BEGIN_NAMESPACE
 
@@ -23,7 +24,7 @@ static QGstElement makeVideoConvertScale(const char *name)
                                                   /*ghostUnlinkedPads=*/true);
 }
 
-QMaybe<QGstreamerVideoOutput *> QGstreamerVideoOutput::create(QObject *parent)
+q23::expected<QGstreamerVideoOutput *, QString> QGstreamerVideoOutput::create(QObject *parent)
 {
     QGstElementFactoryHandle factory = QGstElement::findFactory("videoconvertscale");
 
@@ -40,7 +41,7 @@ QMaybe<QGstreamerVideoOutput *> QGstreamerVideoOutput::create(QObject *parent)
     }();
 
     if (elementCheck)
-        return *elementCheck;
+        return q23::unexpected{ *elementCheck };
 
     return new QGstreamerVideoOutput(parent);
 }
@@ -61,7 +62,6 @@ QGstreamerVideoOutput::QGstreamerVideoOutput(QObject *parent)
       }
 {
     m_videoSink.set("sync", true);
-    m_videoSink.set("async", false); // no asynchronous state changes
 
     m_outputBin.add(m_videoQueue, m_videoConvertScale, m_videoSink);
     qLinkGstElements(m_videoQueue, m_videoConvertScale, m_videoSink);
@@ -77,29 +77,26 @@ QGstreamerVideoOutput::~QGstreamerVideoOutput()
     m_outputBin.setStateSync(GST_STATE_NULL);
 }
 
-void QGstreamerVideoOutput::setVideoSink(QVideoSink *sink)
+void QGstreamerVideoOutput::setVideoSink(QGstreamerRelayVideoSink *sink)
 {
     using namespace std::chrono_literals;
 
-    auto *gstVideoSink =
-            sink ? static_cast<QGstreamerVideoSink *>(sink->platformVideoSink()) : nullptr;
-    if (gstVideoSink == m_platformVideoSink)
+    if (sink == m_gstVideoSink)
         return;
 
-    m_platformVideoSink = gstVideoSink;
-    if (m_platformVideoSink) {
-        m_platformVideoSink->setActive(m_isActive);
+    m_gstVideoSink = sink;
+    if (m_gstVideoSink) {
+        m_gstVideoSink->setActive(m_isActive);
         if (m_nativeSize.isValid())
-            m_platformVideoSink->setNativeSize(m_nativeSize);
+            m_gstVideoSink->setNativeSize(m_nativeSize);
     }
     QGstElement videoSink;
-    if (m_platformVideoSink) {
-        videoSink = m_platformVideoSink->gstSink();
+    if (m_gstVideoSink) {
+        videoSink = m_gstVideoSink->gstSink();
     } else {
         videoSink = QGstElement::createFromFactory("fakesink", "fakevideosink");
         Q_ASSERT(videoSink);
         videoSink.set("sync", true);
-        videoSink.set("async", false); // no asynchronous state changes
     }
 
     QObject::disconnect(m_subtitleConnection);
@@ -138,16 +135,16 @@ void QGstreamerVideoOutput::setActive(bool isActive)
         return;
 
     m_isActive = isActive;
-    if (m_platformVideoSink)
-        m_platformVideoSink->setActive(isActive);
+    if (m_gstVideoSink)
+        m_gstVideoSink->setActive(isActive);
 }
 
 void QGstreamerVideoOutput::updateNativeSize()
 {
-    if (!m_platformVideoSink)
+    if (!m_gstVideoSink)
         return;
 
-    m_platformVideoSink->setNativeSize(qRotatedFrameSize(m_nativeSize, m_rotation));
+    m_gstVideoSink->setNativeSize(qRotatedFrameSize(m_nativeSize, m_rotation));
 }
 
 void QGstreamerVideoOutput::setIsPreview()
@@ -156,14 +153,14 @@ void QGstreamerVideoOutput::setIsPreview()
     // also avoids blocking the queue in case we have an encodebin attached to the tee as well
     m_videoQueue.set("leaky", 2 /*downstream*/);
     m_videoQueue.set("silent", true);
-    m_videoQueue.set("max-size-buffers", uint(1));
-    m_videoQueue.set("max-size-bytes", uint(0));
-    m_videoQueue.set("max-size-time", quint64(0));
+    m_videoQueue.set("max-size-buffers", int(1));
+    m_videoQueue.set("max-size-bytes", unsigned(0));
+    m_videoQueue.set("max-size-time", uint64_t(0));
 }
 
 void QGstreamerVideoOutput::flushSubtitles()
 {
-    if (!m_subtitleSink.isNull()) {
+    if (m_subtitleSink) {
         auto pad = m_subtitleSink.staticPad("sink");
         auto *event = gst_event_new_flush_start();
         pad.sendEvent(event);

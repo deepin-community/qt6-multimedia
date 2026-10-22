@@ -1,19 +1,16 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from QMediaRecorder.pro.
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qmediarecorder LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
 
-#####################################################################
-## tst_QMediaRecorder Test:
-#####################################################################
-
-qt_internal_add_test(tst_qmediarecorder
+qt_internal_multimedia_add_test(tst_qmediarecorder
     SOURCES
         tst_qmediarecorder.cpp
-    INCLUDE_DIRECTORIES
-        ../../mockbackend
     LIBRARIES
-        # Remove: L${CMAKE_CURRENT_SOURCE_DIR}
         Qt::Gui
         Qt::MultimediaPrivate
         Qt::MockMultimediaPlugin

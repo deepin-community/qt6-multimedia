@@ -5,8 +5,9 @@
 #define QAUDIOROOM_H
 
 #include <QtSpatialAudio/qtspatialaudioglobal.h>
-#include <QtCore/qobject.h>
+#include <QtGui/qquaternion.h>
 #include <QtGui/qvector3d.h>
+#include <QtCore/qobject.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,7 +26,7 @@ class Q_SPATIALAUDIO_EXPORT QAudioRoom : public QObject
     Q_PROPERTY(float reverbBrightness READ reverbBrightness WRITE setReverbBrightness NOTIFY reverbBrightnessChanged)
 public:
     explicit QAudioRoom(QAudioEngine *engine);
-    ~QAudioRoom();
+    ~QAudioRoom() override;
 
     enum Material {
       Transparent,
@@ -98,8 +99,10 @@ Q_SIGNALS:
     void reverbBrightnessChanged();
 
 private:
-    friend class QAudioRoomPrivate;
-    QAudioRoomPrivate *d;
+    Q_DECLARE_PRIVATE(QAudioRoom)
+
+    // ### Qt7: remove unused member
+    QT6_ONLY(Q_DECL_UNUSED_MEMBER void *unused = nullptr;) // for ABI compatibility
 };
 
 QT_END_NAMESPACE

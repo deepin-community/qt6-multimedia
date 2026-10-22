@@ -4,9 +4,9 @@
 #ifndef QAUDIOINPUTDEVICE_H
 #define QAUDIOINPUTDEVICE_H
 
-#include <QtCore/qobject.h>
-#include <QtMultimedia/qtmultimediaglobal.h>
 #include <QtMultimedia/qtaudio.h>
+#include <QtMultimedia/qtmultimediaglobal.h>
+#include <QtCore/qobject.h>
 
 #include <functional>
 
@@ -25,7 +25,7 @@ class Q_MULTIMEDIA_EXPORT QAudioInput : public QObject
 public:
     explicit QAudioInput(QObject *parent = nullptr);
     explicit QAudioInput(const QAudioDevice &deviceInfo, QObject *parent = nullptr);
-    ~QAudioInput();
+    ~QAudioInput() override;
 
     QAudioDevice device() const;
     float volume() const;

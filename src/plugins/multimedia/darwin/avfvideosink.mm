@@ -3,18 +3,20 @@
 
 #include "avfvideosink_p.h"
 
-#include <rhi/qrhi.h>
 #include <QtGui/qopenglcontext.h>
+#include <QtGui/rhi/qrhi.h>
 
-#include <AVFoundation/AVFoundation.h>
+#include <CoreVideo/CVBase.h>
+#include <CoreVideo/CVImageBuffer.h>
+#include <CoreVideo/CVPixelBuffer.h>
+
+#import <AVFoundation/AVFoundation.h>
 #import <QuartzCore/CATransaction.h>
 
-#if __has_include(<AppKit/AppKit.h>)
-#include <AppKit/AppKit.h>
-#endif
+#include <Foundation/Foundation.h>
 
-#if __has_include(<UIKit/UIKit.h>)
-#include <UIKit/UIKit.h>
+#ifdef Q_OS_MACOS
+#import <AppKit/AppKit.h>
 #endif
 
 QT_USE_NAMESPACE
@@ -24,9 +26,7 @@ AVFVideoSink::AVFVideoSink(QVideoSink *parent)
 {
 }
 
-AVFVideoSink::~AVFVideoSink()
-{
-}
+AVFVideoSink::~AVFVideoSink() = default;
 
 void AVFVideoSink::setRhi(QRhi *rhi)
 {
@@ -64,17 +64,11 @@ AVFVideoSinkInterface::~AVFVideoSinkInterface()
 
 void AVFVideoSinkInterface::freeTextureCaches()
 {
-    if (cvMetalTextureCache)
-        CFRelease(cvMetalTextureCache);
-    cvMetalTextureCache = nullptr;
+    cvMetalTextureCache = {};
 #if defined(Q_OS_MACOS)
-    if (cvOpenGLTextureCache)
-        CFRelease(cvOpenGLTextureCache);
-    cvOpenGLTextureCache = nullptr;
+    cvOpenGLTextureCache = {};
 #elif defined(Q_OS_IOS)
-    if (cvOpenGLESTextureCache)
-        CFRelease(cvOpenGLESTextureCache);
-    cvOpenGLESTextureCache = nullptr;
+    cvOpenGLESTextureCache = {};
 #endif
 }
 
@@ -96,7 +90,6 @@ void AVFVideoSinkInterface::setVideoSink(AVFVideoSink *sink)
 
 void AVFVideoSinkInterface::setRhi(QRhi *rhi)
 {
-    QMutexLocker locker(&m_textureCacheMutex);
     if (m_rhi == rhi)
         return;
     freeTextureCaches();

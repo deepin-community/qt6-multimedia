@@ -9,51 +9,14 @@
 
 QT_BEGIN_NAMESPACE
 
-QGStreamerAudioDeviceInfo::QGStreamerAudioDeviceInfo(GstDevice *d, const QByteArray &device,
-                                                     QAudioDevice::Mode mode)
-    : QAudioDevicePrivate(device, mode),
-      gstDevice{
-          d,
-          QGstDeviceHandle::NeedsRef,
-      }
-{
-    QGString name{
-        gst_device_get_display_name(gstDevice.get()),
-    };
-    description = name.toQString();
-
-    auto caps = QGstCaps(gst_device_get_caps(gstDevice.get()), QGstCaps::HasRef);
-    int size = caps.size();
-    for (int i = 0; i < size; ++i) {
-        auto c = caps.at(i);
-        if (c.name() == "audio/x-raw") {
-            auto rate = c["rate"].toIntRange();
-            if (rate) {
-                minimumSampleRate = rate->min;
-                maximumSampleRate = rate->max;
-            }
-            auto channels = c["channels"].toIntRange();
-            if (channels) {
-                minimumChannelCount = channels->min;
-                maximumChannelCount = channels->max;
-            }
-            supportedSampleFormats = c["format"].getSampleFormats();
-        }
-    }
-
-    preferredFormat.setChannelCount(qBound(minimumChannelCount, 2, maximumChannelCount));
-    preferredFormat.setSampleRate(qBound(minimumSampleRate, 48000, maximumSampleRate));
-    QAudioFormat::SampleFormat f = QAudioFormat::Int16;
-    if (!supportedSampleFormats.contains(f))
-        f = supportedSampleFormats.value(0, QAudioFormat::Unknown);
-    preferredFormat.setSampleFormat(f);
-}
-
-QGStreamerCustomAudioDeviceInfo::QGStreamerCustomAudioDeviceInfo(
-        const QByteArray &gstreamerPipeline, QAudioDevice::Mode mode)
+QGStreamerCustomAudioDeviceInfo::QGStreamerCustomAudioDeviceInfo(const QByteArray &gstreamerPipeline,
+                                                                 QAudioDevice::Mode mode)
     : QAudioDevicePrivate{
           gstreamerPipeline,
           mode,
+          QString::fromUtf8(gstreamerPipeline),
+          false,
+          std::future<QAudioDevicePrivate::AudioDeviceFormat>{}  // invalid future - format not predetermined
       }
 {
 }
@@ -63,7 +26,7 @@ QAudioDevice qMakeCustomGStreamerAudioInput(const QByteArray &gstreamerPipeline)
     auto deviceInfo = std::make_unique<QGStreamerCustomAudioDeviceInfo>(gstreamerPipeline,
                                                                         QAudioDevice::Mode::Input);
 
-    return deviceInfo.release()->create();
+    return QAudioDevicePrivate::createQAudioDevice(std::move(deviceInfo));
 }
 
 QAudioDevice qMakeCustomGStreamerAudioOutput(const QByteArray &gstreamerPipeline)
@@ -71,7 +34,7 @@ QAudioDevice qMakeCustomGStreamerAudioOutput(const QByteArray &gstreamerPipeline
     auto deviceInfo = std::make_unique<QGStreamerCustomAudioDeviceInfo>(gstreamerPipeline,
                                                                         QAudioDevice::Mode::Output);
 
-    return deviceInfo.release()->create();
+    return QAudioDevicePrivate::createQAudioDevice(std::move(deviceInfo));
 }
 
 bool isCustomAudioDevice(const QAudioDevicePrivate *device)
@@ -81,7 +44,7 @@ bool isCustomAudioDevice(const QAudioDevicePrivate *device)
 
 bool isCustomAudioDevice(const QAudioDevice &device)
 {
-    return isCustomAudioDevice(device.handle());
+    return isCustomAudioDevice(QAudioDevicePrivate::handle(device));
 }
 
 QT_END_NAMESPACE

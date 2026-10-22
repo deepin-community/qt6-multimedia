@@ -81,7 +81,7 @@ void QQnxAudioRecorder::attach()
     if (isAttached())
         return;
 
-    const QString container = m_encoderSettings.mimeType().preferredSuffix();
+    const QString container = m_encoderSettings.preferredSuffix();
     const QString location = QMediaStorageLocation::generateFileName(m_outputUrl.toLocalFile(),
             QStandardPaths::MusicLocation, container);
 
@@ -100,7 +100,7 @@ void QQnxAudioRecorder::attach()
         qWarning("QQnxAudioRecorder: mmr_input_attach() failed");
         detach();
     } else {
-        Q_EMIT actualLocationChanged(location);
+        Q_EMIT actualLocationChanged(QUrl{location});
     }
 }
 

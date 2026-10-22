@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
 #include <qtmultimediaglobal.h>
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
 
 #include "qvideowidget.h"
 #include "qvideosink.h"
@@ -16,7 +17,8 @@
 #include <qmockintegration.h>
 #include <qmockvideosink.h>
 
-QT_USE_NAMESPACE
+#include <private/mediabackendutils_p.h>
+
 
 Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
@@ -64,7 +66,7 @@ public:
 void tst_QVideoWidget::initTestCase()
 {
 #ifdef Q_OS_MACOS
-    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+    if (isCI())
         QSKIP("SKIP on macOS CI since metal is not supported, otherwise it often crashes. To be "
               "fixed.");
 #endif
@@ -131,7 +133,7 @@ void tst_QVideoWidget::aspectRatio()
 
 void tst_QVideoWidget::sizeHint_data()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QSKIP("QTBUG-26481 - Crashes on Mac");
 #endif
 
@@ -152,7 +154,7 @@ void tst_QVideoWidget::sizeHint_data()
 
 void tst_QVideoWidget::sizeHint()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_OS_MACOS
     QSKIP("QTBUG-26481 - Crashes on Mac");
 #endif
 

@@ -14,13 +14,14 @@
 // We mean it.
 //
 
-#include "qffmpeg_p.h"
-#include "qvideoframeformat.h"
-#include "qabstractvideobuffer.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegtextureconverter_p.h>
+#include <QtMultimedia/qvideoframeformat.h>
+#include <QtMultimedia/private/qhwvideobuffer_p.h>
+#include <QtMultimedia/private/qrhivaluemapper_p.h>
+#include <QtCore/qspan.h>
 
-#include <qshareddata.h>
 #include <memory>
-#include <functional>
 #include <mutex>
 
 QT_BEGIN_NAMESPACE
@@ -32,62 +33,37 @@ class QFFmpegVideoBuffer;
 namespace QFFmpeg {
 
 // used for the get_format callback for the decoder
-enum AVPixelFormat getFormat(struct AVCodecContext *s, const enum AVPixelFormat * fmt);
+AVPixelFormat getFormat(AVCodecContext *s, const AVPixelFormat *fmt);
 
 class HWAccel;
-
-class TextureSet {
-public:
-    // ### Should add QVideoFrameFormat::PixelFormat here
-    virtual ~TextureSet() {}
-    virtual qint64 textureHandle(QRhi *, int /*plane*/) { return 0; }
-};
-
-class TextureConverterBackend
-{
-public:
-    TextureConverterBackend(QRhi *rhi)
-        : rhi(rhi)
-    {}
-    virtual ~TextureConverterBackend() {}
-    virtual TextureSet *getTextures(AVFrame * /*frame*/) { return nullptr; }
-
-    QRhi *rhi = nullptr;
-};
-
-class TextureConverter
-{
-    class Data final
-    {
-    public:
-        QAtomicInt ref = 0;
-        QRhi *rhi = nullptr;
-        AVPixelFormat format = AV_PIX_FMT_NONE;
-        std::unique_ptr<TextureConverterBackend> backend;
-    };
-public:
-    TextureConverter(QRhi *rhi = nullptr);
-
-    void init(AVFrame *frame) {
-        AVPixelFormat fmt = frame ? AVPixelFormat(frame->format) : AV_PIX_FMT_NONE;
-        if (fmt != d->format)
-            updateBackend(fmt);
-    }
-    TextureSet *getTextures(AVFrame *frame);
-    bool isNull() const { return !d->backend || !d->backend->rhi; }
-
-private:
-    void updateBackend(AVPixelFormat format);
-
-    QExplicitlySharedDataPointer<Data> d;
-};
 
 class HWAccel;
 using HWAccelUPtr = std::unique_ptr<HWAccel>;
 
+/**
+ * @brief The HwFrameContextData class contains custom belongings
+ *        of hw frames context.
+ */
+struct HwFrameContextData
+{
+    using AVHWFramesContextDeleter = void (*)(struct AVHWFramesContext *ctx);
+    AVHWFramesContextDeleter avDeleter = nullptr;
+    void *avUserOpaque = nullptr;
+
+    QRhiValueMapper<TextureConverter> textureConverterMapper = {};
+
+    /**
+     * @brief gets or creates an instance of the class, associated with
+     *        the frames context of the specified frame. Note, AVFrame
+     *        holds shared ownership of the frames context, so consider this
+     *        when designing HwFrameContextData's lifetime.
+     */
+    static HwFrameContextData &ensure(AVFrame &hwFrame);
+};
+
 class HWAccel
 {
-    AVBufferUPtr m_hwDeviceContext;
+    const AVBufferUPtr m_hwDeviceContext;
     AVBufferUPtr m_hwFramesContext;
 
     mutable std::once_flag m_constraintsOnceFlag;
@@ -98,13 +74,7 @@ public:
 
     static HWAccelUPtr create(AVHWDeviceType deviceType);
 
-    static std::pair<const AVCodec *, HWAccelUPtr>
-    findEncoderWithHwAccel(AVCodecID id,
-                           const std::function<bool(const HWAccel &)> &hwAccelPredicate = nullptr);
-
-    static std::pair<const AVCodec *, HWAccelUPtr>
-    findDecoderWithHwAccel(AVCodecID id,
-                           const std::function<bool(const HWAccel &)> &hwAccelPredicate = nullptr);
+    static std::pair<std::optional<Codec>, HWAccelUPtr> findDecoderWithHwAccel(AVCodecID id);
 
     AVHWDeviceType deviceType() const;
 
@@ -116,13 +86,13 @@ public:
     bool matchesSizeContraints(QSize size) const;
 
     void createFramesContext(AVPixelFormat swFormat, const QSize &size);
+    void updateFramesContext(AVPixelFormat swFormat, const QSize &size);
     AVBufferRef *hwFramesContextAsBuffer() const { return m_hwFramesContext.get(); }
     AVHWFramesContext *hwFramesContext() const;
 
     static AVPixelFormat format(AVFrame *frame);
-    static const std::vector<AVHWDeviceType> &encodingDeviceTypes();
-
-    static const std::vector<AVHWDeviceType> &decodingDeviceTypes();
+    static QSpan<const AVHWDeviceType> encodingDeviceTypes();
+    static QSpan<const AVHWDeviceType> decodingDeviceTypes();
 
 private:
     HWAccel(AVBufferUPtr hwDeviceContext) : m_hwDeviceContext(std::move(hwDeviceContext)) { }
@@ -130,7 +100,7 @@ private:
 
 AVFrameUPtr copyFromHwPool(AVFrameUPtr frame);
 
-}
+} // namespace QFFmpeg
 
 QT_END_NAMESPACE
 

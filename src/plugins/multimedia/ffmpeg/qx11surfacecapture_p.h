@@ -15,7 +15,7 @@
 // We mean it.
 //
 
-#include "private/qplatformsurfacecapture_p.h"
+#include <QtMultimedia/private/qplatformsurfacecapture_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -36,8 +36,7 @@ protected:
 
 private:
     void activate(ScreenSource);
-
-    void activate(WindowSource);
+    void activate(const WindowSource &);
 
 private:
     std::unique_ptr<Grabber> m_grabber;

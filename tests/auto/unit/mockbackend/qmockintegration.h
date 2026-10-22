@@ -15,7 +15,9 @@
 // We mean it.
 //
 
-#include <private/qplatformmediaintegration_p.h>
+#include <QtCore/qplugin.h>
+
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -25,6 +27,9 @@ class QMockCamera;
 class QMockMediaCaptureSession;
 class QMockVideoSink;
 class QMockSurfaceCapture;
+class QPlatformMediaFormatInfo;
+class QMockAudioDevices;
+class QMockVideoDevices;
 
 class QMockIntegration : public QPlatformMediaIntegration
 {
@@ -37,15 +42,17 @@ public:
         return static_cast<QMockIntegration *>(QPlatformMediaIntegration::instance());
     }
 
-    QMaybe<QPlatformAudioDecoder *> createAudioDecoder(QAudioDecoder *decoder) override;
-    QMaybe<QPlatformMediaPlayer *> createPlayer(QMediaPlayer *) override;
-    QMaybe<QPlatformCamera *> createCamera(QCamera *) override;
-    QMaybe<QPlatformMediaRecorder *> createRecorder(QMediaRecorder *) override;
-    QMaybe<QPlatformImageCapture *> createImageCapture(QImageCapture *) override;
-    QMaybe<QPlatformMediaCaptureSession *> createCaptureSession() override;
-    QMaybe<QPlatformVideoSink *> createVideoSink(QVideoSink *) override;
+    using QPlatformMediaIntegration::resetInstance;
 
-    QMaybe<QPlatformAudioOutput *> createAudioOutput(QAudioOutput *) override;
+    q23::expected<QPlatformAudioDecoder *, QString> createAudioDecoder(QAudioDecoder *decoder) override;
+    q23::expected<QPlatformMediaPlayer *, QString> createPlayer(QMediaPlayer *) override;
+    q23::expected<QPlatformCamera *, QString> createCamera(QCamera *) override;
+    q23::expected<QPlatformMediaRecorder *, QString> createRecorder(QMediaRecorder *) override;
+    q23::expected<QPlatformImageCapture *, QString> createImageCapture(QImageCapture *) override;
+    q23::expected<QPlatformMediaCaptureSession *, QString> createCaptureSession() override;
+    q23::expected<QPlatformVideoSink *, QString> createVideoSink(QVideoSink *) override;
+
+    q23::expected<QPlatformAudioOutput *, QString> createAudioOutput(QAudioOutput *) override;
 
     QPlatformSurfaceCapture *createScreenCapture(QScreenCapture *) override;
     QPlatformSurfaceCapture *createWindowCapture(QWindowCapture *) override;
@@ -66,13 +73,19 @@ public:
     QMockVideoSink *lastVideoSink() const { return m_lastVideoSink; }
     QMockSurfaceCapture *lastScreenCapture() { return m_lastScreenCapture; }
     QMockSurfaceCapture *lastWindowCapture() { return m_lastWindowCapture; }
+    QPlatformMediaFormatInfo *getWritableFormatInfo();
+
+    QMockAudioDevices* audioDevices();
+    QMockVideoDevices* videoDevices();
+
+    int createVideoDevicesInvokeCount() const { return m_createVideoDevicesInvokeCount; }
+    int createAudioDevicesInvokeCount() const { return m_createAudioDevicesInvokeCount; }
 
 protected:
     QPlatformVideoDevices *createVideoDevices() override;
-    std::unique_ptr<QPlatformMediaDevices> createMediaDevices() override;
+    std::unique_ptr<QPlatformAudioDevices> createAudioDevices() override;
 
 private:
-
     Flags m_flags = {};
     QMockMediaPlayer *m_lastPlayer = nullptr;
     QMockAudioDecoder *m_lastAudioDecoderControl = nullptr;
@@ -82,19 +95,21 @@ private:
     QMockVideoSink *m_lastVideoSink = nullptr;
     QMockSurfaceCapture *m_lastScreenCapture = nullptr;
     QMockSurfaceCapture *m_lastWindowCapture = nullptr;
+    int m_createVideoDevicesInvokeCount = 0;
+    int m_createAudioDevicesInvokeCount = 0;
 };
 
 Q_DECLARE_OPERATORS_FOR_FLAGS(QMockIntegration::Flags);
 
-#define Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN          \
-    Q_IMPORT_PLUGIN(MockMultimediaPlugin)        \
-    struct EnableMockPlugin                      \
-    {                                            \
-        EnableMockPlugin()                       \
-        {                                        \
-            qputenv("QT_MEDIA_BACKEND", "mock"); \
-        }                                        \
-    };                                           \
+#define Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN                     \
+    Q_IMPORT_PLUGIN(MockMultimediaPlugin)                   \
+    struct EnableMockPlugin                                 \
+    {                                                       \
+        EnableMockPlugin()                                  \
+        {                                                   \
+            QPlatformMediaIntegration::setBackend("mock");  \
+        }                                                   \
+    };                                                      \
     static EnableMockPlugin s_mockMultimediaPluginEnabler;
 
 

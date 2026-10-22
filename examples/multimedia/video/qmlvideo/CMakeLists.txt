@@ -14,16 +14,14 @@ set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/multimedia/video/qmlvideo")
 
 find_package(Qt6 REQUIRED COMPONENTS Core Gui Multimedia Qml Quick)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup(REQUIRES 6.8)
 
 qt_add_executable(qmlvideoexample
-    frequencymonitor.cpp frequencymonitor.h
-    frequencymonitordeclarative.cpp
-    performancemonitor.cpp performancemonitor.h
-    performancemonitordeclarative.cpp performancemonitordeclarative.h
     main.cpp
     trace.h
 )
+
+qt_add_ios_ffmpeg_libraries(qmlvideoexample)
 
 set_target_properties(qmlvideoexample PROPERTIES
     WIN32_EXECUTABLE TRUE
@@ -32,13 +30,7 @@ set_target_properties(qmlvideoexample PROPERTIES
     MACOSX_BUNDLE_GUI_IDENTIFIER "io.qt.examples.qmlvideo"
 )
 
-target_compile_definitions(qmlvideoexample PUBLIC
-    FREQUENCYMONITOR_SUPPORT
-    PERFORMANCEMONITOR_SUPPORT
-)
-
 add_subdirectory(qmlvideo)
-add_subdirectory(performancemonitor)
 add_subdirectory(frequencymonitor)
 
 target_link_libraries(qmlvideoexample PRIVATE
@@ -48,9 +40,13 @@ target_link_libraries(qmlvideoexample PRIVATE
     Qt::Qml
     Qt::Quick
     qmlvideo
-    performancemonitor
     frequencymonitor
 )
+
+# Temporary workaround for QML module linker issues on static builds
+# (Includes official iOS binaries)
+# See QTBUG-141857
+target_link_libraries(qmlvideoexample PRIVATE qmlvideoplugin frequencymonitorplugin)
 
 install(TARGETS qmlvideoexample
     BUNDLE DESTINATION .
@@ -61,9 +57,7 @@ install(TARGETS qmlvideoexample
 qt_generate_deploy_qml_app_script(
     TARGET qmlvideoexample
     OUTPUT_SCRIPT deploy_script
-    MACOS_BUNDLE_POST_BUILD
     NO_UNSUPPORTED_PLATFORM_ERROR
-    DEPLOY_USER_QML_MODULES_ON_UNSUPPORTED_PLATFORM
 )
 
 install(SCRIPT ${deploy_script})

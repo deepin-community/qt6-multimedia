@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qplatformvideosink_p.h"
-#include "qmultimediautils_p.h"
+
+#include <QtMultimedia/private/qmultimediautils_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,7 +31,7 @@ void QPlatformVideoSink::setNativeSize(QSize s)
 void QPlatformVideoSink::setVideoFrame(const QVideoFrame &frame)
 {
     bool sizeChanged = false;
-
+    QVideoFrame currentFrame;
     {
         QMutexLocker locker(&m_mutex);
         if (frame == m_currentVideoFrame)
@@ -42,7 +43,10 @@ void QPlatformVideoSink::setVideoFrame(const QVideoFrame &frame)
             m_nativeSize = size;
             sizeChanged = true;
         }
+        currentFrame = m_currentVideoFrame;
     }
+
+    onVideoFrameChanged(currentFrame);
 
     // emit signals outside the mutex to avoid deadlocks on the user side
     if (sizeChanged)

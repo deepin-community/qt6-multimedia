@@ -25,7 +25,7 @@ class QGstreamerFormatInfo : public QPlatformMediaFormatInfo
 {
 public:
     QGstreamerFormatInfo();
-    ~QGstreamerFormatInfo();
+    ~QGstreamerFormatInfo() override;
 
     QGstCaps formatCaps(const QMediaFormat &f) const;
     QGstCaps audioCaps(const QMediaFormat &f) const;
@@ -37,8 +37,9 @@ public:
     static QImageCapture::FileFormat imageFormatForCaps(QGstStructureView structure);
 
 private:
-    QList<CodecMap> getCodecMaps(QMediaFormat::ConversionMode conversionMode, QList<QMediaFormat::AudioCodec> audioCodecs,
-                                 QList<QMediaFormat::VideoCodec> videoCodecs);
+    QList<CodecMap> getCodecMaps(QMediaFormat::ConversionMode conversionMode,
+                                 const QList<QMediaFormat::AudioCodec> &audioCodecs,
+                                 const QList<QMediaFormat::VideoCodec> &videoCodecs);
 };
 
 QT_END_NAMESPACE

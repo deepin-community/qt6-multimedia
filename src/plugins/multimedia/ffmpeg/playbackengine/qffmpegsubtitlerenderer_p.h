@@ -14,7 +14,7 @@
 // We mean it.
 //
 
-#include "playbackengine/qffmpegrenderer_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegrenderer_p.h>
 
 #include <QtCore/qpointer.h>
 
@@ -28,7 +28,7 @@ class SubtitleRenderer : public Renderer
 {
     Q_OBJECT
 public:
-    SubtitleRenderer(const TimeController &tc, QVideoSink *sink);
+    SubtitleRenderer(const PlaybackEngineObjectID &id, const TimeController &tc, QVideoSink *sink);
 
     ~SubtitleRenderer() override;
 

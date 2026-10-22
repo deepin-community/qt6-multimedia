@@ -1,5 +1,6 @@
 TEMPLATE = subdirs
 QT_FOR_CONFIG += multimedia-private
+CONFIG += add_ios_ffmpeg_libraries
 
 # These examples all need widgets for now (using creator templates that use widgets)
 qtHaveModule(widgets) {
@@ -9,7 +10,6 @@ qtHaveModule(widgets) {
         audiorecorder \
         camera \
         player \
-        spectrum \
         videographicsitem \
         videowidget \
         screencapture

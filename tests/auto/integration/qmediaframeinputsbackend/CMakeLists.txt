@@ -1,22 +1,20 @@
 # Copyright (C) 2024 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-#####################################################################
-## tst_qmediaframeinputsbackend Test:
-#####################################################################
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qmediaframeinputsbackend LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
 
-qt_internal_add_test(tst_qmediaframeinputsbackend
+qt_internal_multimedia_add_test(tst_qmediaframeinputsbackend
+    NEEDS_MEDIA_BACKEND_PLUGINS
     SOURCES
         tst_qmediaframeinputsbackend.cpp tst_qmediaframeinputsbackend.h
-        capturesessionfixture.cpp capturesessionfixture.h
-        mediainfo.h
-        framegenerator.cpp framegenerator.h
-        ../shared/testvideosink.h
-        ../shared/audiogenerationutils.h
     LIBRARIES
         Qt::Multimedia
         Qt::MultimediaPrivate
         Qt::Gui
+        Qt::MultimediaTestLibPrivate
 )
-
 

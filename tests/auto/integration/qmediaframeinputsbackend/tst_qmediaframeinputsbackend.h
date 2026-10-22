@@ -6,9 +6,11 @@
 
 #include <QObject>
 
+#include <QtMultimediaTestLib/private/qintegrationtestbase_p.h>
+
 QT_BEGIN_NAMESPACE
 
-class tst_QMediaFrameInputsBackend : public QObject
+class tst_QMediaFrameInputsBackend : public QIntegrationTestBase
 {
     Q_OBJECT
 
@@ -21,18 +23,10 @@ private slots:
     void mediaRecorderWritesVideo_whenVideoFramesInputSendsFrames_data();
     void mediaRecorderWritesVideo_whenVideoFramesInputSendsFrames();
 
-    void mediaRecorderWritesVideo_whenInputFrameShrinksOverTime();
-    void mediaRecorderWritesVideo_whenInputFrameGrowsOverTime();
-
     void mediaRecorderWritesVideo_withSingleFrame();
 
-    void mediaRecorderWritesVideo_withCorrectColors();
-
-    void mediaRecorderWritesAudio_withCorrectData_data();
-    void mediaRecorderWritesAudio_withCorrectData();
-
-    void mediaRecorderStopsRecording_whenInputsReportedEndOfStream_data();
-    void mediaRecorderStopsRecording_whenInputsReportedEndOfStream();
+    void sinkReceivesFrameWithTransformParams_whenPresentationTransformPresent_data();
+    void sinkReceivesFrameWithTransformParams_whenPresentationTransformPresent();
 
     void readyToSend_isEmitted_whenRecordingStarts_data();
     void readyToSend_isEmitted_whenRecordingStarts();
@@ -43,6 +37,7 @@ private slots:
     void readyToSendVideoFrame_isEmittedRepeatedly_whenPullModeIsEnabled();
     void readyToSendAudioBuffer_isEmittedRepeatedly_whenPullModeIsEnabled();
     void readyToSendAudioBufferAndVideoFrame_isEmittedRepeatedly_whenPullModeIsEnabled();
+
 };
 
 QT_END_NAMESPACE

@@ -17,10 +17,12 @@
 
 QT_BEGIN_NAMESPACE
 
+using namespace Qt::StringLiterals;
+
 // Probably, might be increased. To be investigated and tested on Android implementation
 static constexpr int MaxPendingImagesCount = 1;
 
-static Q_LOGGING_CATEGORY(qLcImageCapture, "qt.multimedia.imageCapture")
+Q_STATIC_LOGGING_CATEGORY(qLcImageCapture, "qt.multimedia.imageCapture")
 
 QFFmpegImageCapture::QFFmpegImageCapture(QImageCapture *parent)
   : QPlatformImageCapture(parent)
@@ -28,9 +30,7 @@ QFFmpegImageCapture::QFFmpegImageCapture(QImageCapture *parent)
     qRegisterMetaType<QVideoFrame>();
 }
 
-QFFmpegImageCapture::~QFFmpegImageCapture()
-{
-}
+QFFmpegImageCapture::~QFFmpegImageCapture() = default;
 
 bool QFFmpegImageCapture::isReadyForCapture() const
 {
@@ -71,38 +71,47 @@ int QFFmpegImageCapture::captureToBuffer()
 
 int QFFmpegImageCapture::doCapture(const QString &fileName)
 {
-    qCDebug(qLcImageCapture) << "do capture";
+    using namespace Qt::Literals::StringLiterals;
+
     if (!m_session) {
         //emit error in the next event loop,
         //so application can associate it with returned request id.
-        QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection,
-                                  Q_ARG(int, -1),
-                                  Q_ARG(int, QImageCapture::ResourceError),
-                                  Q_ARG(QString, QPlatformImageCapture::msgImageCaptureNotSet()));
-
-        qCDebug(qLcImageCapture) << "error 1";
+        QMetaObject::invokeMethod(
+            this,
+            [this]() {
+                emit error(
+                    -1,
+                    QImageCapture::ResourceError,
+                    QPlatformImageCapture::msgImageCaptureNotSet());
+            });
         return -1;
     }
+
     if (!m_videoSource) {
         //emit error in the next event loop,
         //so application can associate it with returned request id.
-        QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection,
-                                  Q_ARG(int, -1),
-                                  Q_ARG(int, QImageCapture::ResourceError),
-                                  Q_ARG(QString,tr("No camera available.")));
-
-        qCDebug(qLcImageCapture) << "error 2";
+        QMetaObject::invokeMethod(
+            this,
+            [this]() {
+                emit error(
+                    -1,
+                    QImageCapture::ResourceError,
+                    u"No camera available."_s);
+            });
         return -1;
     }
+
     if (m_pendingImages.size() >= MaxPendingImagesCount) {
         //emit error in the next event loop,
         //so application can associate it with returned request id.
-        QMetaObject::invokeMethod(this, "error", Qt::QueuedConnection,
-                                  Q_ARG(int, -1),
-                                  Q_ARG(int, QImageCapture::NotReadyError),
-                                  Q_ARG(QString, QPlatformImageCapture::msgCameraNotReady()));
-
-        qCDebug(qLcImageCapture) << "error 3";
+        QMetaObject::invokeMethod(
+            this,
+            [this]() {
+                emit error(
+                    -1,
+                    QImageCapture::NotReadyError,
+                    QPlatformImageCapture::msgCameraNotReady());
+            });
         return -1;
     }
 
@@ -133,6 +142,22 @@ void QFFmpegImageCapture::setCaptureSession(QPlatformMediaCaptureSession *sessio
                 &QFFmpegImageCapture::onVideoSourceChanged);
 
     onVideoSourceChanged();
+}
+
+void QFFmpegImageCapture::cancelPendingImage(QImageCapture::Error error, const QString &errorMsg)
+{
+    if (m_pendingImages.empty()) {
+        qCDebug(qLcImageCapture) <<
+            "QImageCapture backend received an event to cancel a pending capture, "
+            "but no captures are pending. Most likely an internal Qt bug.";
+        return;
+    }
+
+    PendingImage cancelledImage = m_pendingImages.dequeue();
+
+    emit QPlatformImageCapture::error(cancelledImage.id, error, errorMsg);
+
+    updateReadyForCapture();
 }
 
 void QFFmpegImageCapture::updateReadyForCapture()
@@ -250,7 +275,7 @@ void QFFmpegImageCapture::setImageSettings(const QImageEncoderSettings &settings
     auto s = settings;
     const auto supportedFormats = QPlatformMediaIntegration::instance()->formatInfo()->imageFormats;
     if (supportedFormats.isEmpty()) {
-        emit error(-1, QImageCapture::FormatError, "No image formats supported, can't capture.");
+        emit error(-1, QImageCapture::FormatError, u"No image formats supported, can't capture."_s);
         return;
     }
     if (s.format() == QImageCapture::UnspecifiedFormat) {
@@ -259,7 +284,7 @@ void QFFmpegImageCapture::setImageSettings(const QImageEncoderSettings &settings
             f = supportedFormats.first();
         s.setFormat(f);
     } else if (!supportedFormats.contains(settings.format())) {
-        emit error(-1, QImageCapture::FormatError, "Image format not supported.");
+        emit error(-1, QImageCapture::FormatError, u"Image format not supported."_s);
         return;
     }
 

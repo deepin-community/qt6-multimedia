@@ -16,7 +16,7 @@
 //
 
 #include <QtCore/qnamespace.h>
-#include "private/qplatformsurfacecapture_p.h"
+#include <QtMultimedia/private/qplatformsurfacecapture_p.h>
 #include "qvideoframeformat.h"
 #include <memory>
 
@@ -32,12 +32,11 @@ public:
 
     static bool isSupported();
 
-private:
-    class Grabber;
-
+protected:
     bool setActiveInternal(bool active) override;
 
 private:
+    class Grabber;
     std::unique_ptr<Grabber> m_grabber;
 };
 

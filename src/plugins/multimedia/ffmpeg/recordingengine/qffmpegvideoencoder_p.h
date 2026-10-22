@@ -3,9 +3,21 @@
 #ifndef QFFMPEGVIDEOENCODER_P_H
 #define QFFMPEGVIDEOENCODER_P_H
 
-#include "qffmpegencoderthread_p.h"
-#include "qffmpeg_p.h"
-#include "qffmpegvideoframeencoder_p.h"
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
+
+#include <QtFFmpegMediaPluginImpl/private/qffmpegencoderthread_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpeg_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegvideoframeencoder_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegframerateadapter_p.h>
 #include <qvideoframe.h>
 #include <queue>
 
@@ -30,12 +42,6 @@ protected:
     bool checkIfCanPushFrame() const override;
 
 private:
-    struct FrameInfo
-    {
-        QVideoFrame frame;
-        bool shouldAdjustTimeBase = false;
-    };
-
     FrameInfo takeFrame();
     void retrievePackets();
 
@@ -46,7 +52,6 @@ private:
 
     std::pair<qint64, qint64> frameTimeStamps(const QVideoFrame &frame) const;
 
-private:
     QMediaEncoderSettings m_settings;
     VideoFrameEncoder::SourceParams m_sourceParams;
     std::queue<FrameInfo> m_videoFrameQueue;
@@ -56,6 +61,14 @@ private:
     qint64 m_baseTime = 0;
     bool m_shouldAdjustTimeBaseForNextFrame = true;
     qint64 m_lastFrameTime = 0;
+
+    std::optional<qreal> m_fixedSourceFrameRate; // nullopt = variable-rate source
+    FrameRateAdapter m_frameRateAdapter;
+
+    // Frames that arrive via addFrame() before init() has configured m_frameRateAdapter
+    // with the negotiated codec frame rate. Adapted once init() runs.
+    std::queue<QVideoFrame> m_framesBeforeInit;
+    const size_t m_maxFramesBeforeInit = 10; // Arbitrarily chosen, same rationale as m_maxQueueSize
 };
 
 } // namespace QFFmpeg
