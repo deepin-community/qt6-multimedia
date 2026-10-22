@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: BSD-3-Clause
 
 cmake_minimum_required(VERSION 3.16)
-project(sidepanel LANGUAGES CXX)
+project(minimal-player LANGUAGES CXX)
 
 set(CMAKE_AUTOMOC ON)
 
@@ -12,7 +12,9 @@ endif()
 
 set(INSTALL_EXAMPLEDIR "${INSTALL_EXAMPLESDIR}/multimedia/minimal-player")
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+endif()
 
 qt_add_executable( minimal-player WIN32 MACOSX_BUNDLE
     minimal-player.cpp

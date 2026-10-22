@@ -12,49 +12,59 @@
 // We mean it.
 //
 
-
-#ifndef QWINDOWSAUDIODEVICEINFO_H
-#define QWINDOWSAUDIODEVICEINFO_H
+#ifndef QWINDOWSAUDIODEVICE_H
+#define QWINDOWSAUDIODEVICE_H
 
 #include <QtCore/qbytearray.h>
-#include <QtCore/qstringlist.h>
-#include <QtCore/qlist.h>
-#include <QtCore/qdebug.h>
+#include <QtCore/qstring.h>
+#include <QtCore/quuid.h>
+#include <QtCore/private/qcomptr_p.h>
 
 #include <QtMultimedia/qaudiodevice.h>
-#include <private/qaudiosystem_p.h>
-#include <private/qaudiodevice_p.h>
-#include <qcomptr_p.h>
+#include <QtMultimedia/private/qaudioformat_p.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qaudiodevice_p.h>
+
+#include <mmdeviceapi.h>
 
 struct IMMDevice;
 
 QT_BEGIN_NAMESPACE
 
-const unsigned int MAX_SAMPLE_RATES = 5;
-const unsigned int SAMPLE_RATES[] = { 8000, 11025, 22050, 44100, 48000 };
+namespace QtWASAPI {
 
-class QWindowsAudioDeviceInfo : public QAudioDevicePrivate
-{
-public:
-    QWindowsAudioDeviceInfo(QByteArray dev, ComPtr<IMMDevice> immdev, int waveID, const QString &description, QAudioDevice::Mode mode);
-    ~QWindowsAudioDeviceInfo();
-
-    bool open();
-    void close();
-
-    bool testSettings(const QAudioFormat& format) const;
-
-    int waveId() const { return m_devId; }
-    ComPtr<IMMDevice> immDev() const { return m_immDev; }
-
-private:
-    quint32 m_devId;
-    ComPtr<IMMDevice> m_immDev;
+struct WindowsProbeData {
+    std::pair<int, int> channelCountRange;
+    std::pair<int, int> sampleRateRange;
 };
 
+struct WindowsFormatResultFutures
+{
+    std::future<QAudioDevicePrivate::AudioDeviceFormat> formatFuture;
+    std::future<WindowsProbeData> probeDataFuture;
+};
 
+} // namespace QtWASAPI
+
+class QWindowsAudioDevice final : public QAudioDevicePrivate
+{
+public:
+    QWindowsAudioDevice(QByteArray deviceId, ComPtr<IMMDevice>, QString description,
+                        QUuid containerId, EndpointFormFactor, QAudioDevice::Mode);
+    QWindowsAudioDevice(QByteArray deviceId, QString description, QUuid containerId,
+                        EndpointFormFactor, QAudioDevice::Mode,
+                        QtWASAPI::WindowsFormatResultFutures);
+    ~QWindowsAudioDevice();
+
+    std::unique_ptr<QAudioDevicePrivate> clone() const;
+
+    ComPtr<IMMDevice> open() const;
+
+    const QUuid m_device_ContainerId;
+    const EndpointFormFactor m_formFactor = EndpointFormFactor::UnknownFormFactor;
+    std::shared_future<QtWASAPI::WindowsProbeData> m_probeDataFuture;
+};
 
 QT_END_NAMESPACE
 
-
-#endif // QWINDOWSAUDIODEVICEINFO_H
+#endif // QWINDOWSAUDIODEVICE_H

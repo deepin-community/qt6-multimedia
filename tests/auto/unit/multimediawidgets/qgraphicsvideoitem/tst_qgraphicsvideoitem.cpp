@@ -3,7 +3,9 @@
 
 #include <qtmultimediaglobal.h>
 #include "qgraphicsvideoitem.h"
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
+#include <QtTest/qtesteventloop.h>
+#include <QtTest/qsignalspy.h>
 
 #include <qvideosink.h>
 #include <qvideoframeformat.h>
@@ -16,7 +18,6 @@
 
 #include <qmockintegration.h>
 
-QT_USE_NAMESPACE
 
 Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
@@ -371,7 +372,7 @@ void tst_QGraphicsVideoItem::paint()
     QVERIFY(item->paintCount() || item->waitForPaint(1));
 
     auto *sink = item->videoSink();
-    Q_ASSERT(sink);
+    QTEST_ASSERT(sink);
 
     QVideoFrameFormat format(QSize(2, 2), QVideoFrameFormat::Format_XRGB8888);
     QVideoFrame frame(format);

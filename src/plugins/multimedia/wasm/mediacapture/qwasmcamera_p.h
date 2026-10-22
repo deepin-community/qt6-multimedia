@@ -72,6 +72,7 @@ Q_SIGNALS:
 private:
     void createCamera(const QCameraDevice &camera);
     void updateCameraFeatures();
+    void updateVideoFormats(const emscripten::val &caps);
 
     QCameraDevice m_cameraDev;
     QWasmMediaCaptureSession *m_CaptureSession = nullptr;
@@ -92,6 +93,7 @@ private:
     bool m_cameraIsReady = false;
     bool m_cameraShouldStartActive = false;
     bool m_shouldBeActive = false;
+    QMetaObject::Connection m_readyChangedConnection;
 };
 
 QT_END_NAMESPACE

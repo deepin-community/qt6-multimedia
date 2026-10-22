@@ -15,10 +15,11 @@
 // We mean it.
 //
 
-#include <private/qplatformmediacapture_p.h>
-#include <private/qplatformmediaintegration_p.h>
-#include "qpointer.h"
-#include "qiodevice.h"
+#include <QtCore/qiodevice.h>
+#include <QtCore/qpointer.h>
+
+#include <QtMultimedia/private/qplatformmediacapture_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,7 +31,7 @@ class QFFmpegAudioInput;
 class QAudioBuffer;
 class QPlatformVideoSource;
 class QPlatformAudioBufferInput;
-class QPlatformAudioBufferInputBase;
+class QAudioBufferSource;
 
 class QFFmpegMediaCaptureSession : public QPlatformMediaCaptureSession
 {
@@ -68,16 +69,24 @@ public:
     void setVideoPreview(QVideoSink *sink) override;
     void setAudioOutput(QPlatformAudioOutput *output) override;
 
+    // A source may emit frames from a backgrund thread before
+    // its setActive() is done. We need to setup necessary connections
+    // ahead of time as to not miss initial frames. This function
+    // should be called by a source right before it initiates
+    // the internal stream.
+    void onSourceActivating(QPlatformVideoSource &);
+    // Called by a source if it fails to go inactive.
+    void onSourceActivationFailure(QPlatformVideoSource &);
+
     QPlatformVideoSource *primaryActiveVideoSource();
 
     // it might be moved to the base class, but it needs QPlatformAudioInput
-    // to be QPlatformAudioBufferInputBase, which might not make sense
-    std::vector<QPlatformAudioBufferInputBase *> activeAudioInputs() const;
+    // to be QAudioBufferSource, which might not make sense
+    std::vector<QAudioBufferSource *> activeAudioInputs() const;
 
 private Q_SLOTS:
     void updateAudioSink();
     void updateVolume();
-    void updateVideoFrameConnection();
     void updatePrimaryActiveVideoSource();
 
 Q_SIGNALS:
@@ -86,6 +95,10 @@ Q_SIGNALS:
 private:
     template<typename VideoSource>
     bool setVideoSource(QPointer<VideoSource> &source, VideoSource *newSource);
+
+    [[nodiscard]] QPlatformVideoSource *primaryVideoSource(QPlatformVideoSource *pendingActiveSource);
+
+    void updateVideoFrameConnection(QPlatformVideoSource *pendingActiveSource);
 
     QPointer<QPlatformCamera> m_camera;
     QPointer<QPlatformSurfaceCapture> m_screenCapture;
@@ -104,7 +117,13 @@ private:
     QPointer<QIODevice> m_audioIODevice;
     qsizetype m_audioBufferSize = 0;
 
-    QMetaObject::Connection m_videoFrameConnection;
+    struct SourceSinkConnection {
+        QPlatformVideoSource *source = nullptr;
+        QVideoSink *sink = nullptr;
+        QMetaObject::Connection connection;
+    };
+
+    SourceSinkConnection m_videoSinkConnection;
 };
 
 QT_END_NAMESPACE

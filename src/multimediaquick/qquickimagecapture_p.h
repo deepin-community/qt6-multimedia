@@ -15,11 +15,11 @@
 // We mean it.
 //
 
-#include <qcamera.h>
-#include <qimagecapture.h>
-#include <qmediametadata.h>
-
+#include <QtMultimedia/qcamera.h>
+#include <QtMultimedia/qimagecapture.h>
+#include <QtMultimedia/qmediametadata.h>
 #include <QtQml/qqml.h>
+#include <QtCore/quuid.h>
 #include <QtCore/private/qglobal_p.h>
 
 QT_BEGIN_NAMESPACE
@@ -34,7 +34,7 @@ class QQuickImageCapture : public QImageCapture
 
 public:
     QQuickImageCapture(QObject *parent = nullptr);
-    ~QQuickImageCapture();
+    ~QQuickImageCapture() override;
 
     QString preview() const;
 
@@ -48,6 +48,7 @@ private Q_SLOTS:
     void _q_imageCaptured(int, const QImage&);
 
 private:
+    QUuid m_instanceId = QUuid::createUuid();
     QImage m_lastImage;
     QString m_capturedImagePath;
 };

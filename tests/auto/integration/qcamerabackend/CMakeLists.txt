@@ -1,27 +1,20 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from qcamerabackend.pro.
+if(NOT QT_BUILD_STANDALONE_TESTS AND NOT QT_BUILDING_QT)
+    cmake_minimum_required(VERSION 3.16)
+    project(tst_qcamerabackend LANGUAGES CXX)
+    find_package(Qt6BuildInternals REQUIRED COMPONENTS STANDALONE_TEST)
+endif()
 
-#####################################################################
-## tst_qcamerabackend Test:
-#####################################################################
-
-qt_internal_add_test(tst_qcamerabackend
+qt_internal_multimedia_add_test(tst_qcamerabackend
+    NEEDS_MEDIA_BACKEND_PLUGINS
+    MACOS_BUNDLE
     SOURCES
         tst_qcamerabackend.cpp
-        ../shared/mediabackendutils.h
-    INCLUDE_DIRECTORIES
-        ../shared/
     LIBRARIES
         Qt::Gui
         Qt::MultimediaPrivate
         Qt::Widgets
+        Qt::MultimediaTestLibPrivate
 )
-
-# special case begin
-if(APPLE)
-    set_property(TARGET tst_qcamerabackend PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info.plist")
-    set_property(TARGET tst_qcamerabackend PROPERTY PROPERTY MACOSX_BUNDLE TRUE)
-endif()
-# special case end

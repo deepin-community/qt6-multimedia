@@ -15,19 +15,16 @@
 // We mean it.
 //
 
-#include <QtCore/QMutex>
-#include "private/qplatformvideosink_p.h"
+#include <QtMultimedia/private/qplatformvideosink_p.h>
 
-Q_FORWARD_DECLARE_OBJC_CLASS(CALayer);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVPlayerLayer);
-Q_FORWARD_DECLARE_OBJC_CLASS(AVCaptureVideoPreviewLayer);
+#include <QtCore/private/qcore_mac_p.h>
 
 #include <CoreVideo/CVBase.h>
-#include <CoreVideo/CVPixelBuffer.h>
 #include <CoreVideo/CVImageBuffer.h>
+#include <CoreVideo/CVPixelBuffer.h>
 
-#import "Metal/Metal.h"
-#import "MetalKit/MetalKit.h"
+#import <AVFoundation/AVFoundation.h>
+#import <Metal/Metal.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -38,8 +35,8 @@ class AVFVideoSink : public QPlatformVideoSink
     Q_OBJECT
 
 public:
-    AVFVideoSink(QVideoSink *parent = nullptr);
-    virtual ~AVFVideoSink();
+    explicit AVFVideoSink(QVideoSink *parent = nullptr);
+    ~AVFVideoSink() override;
 
     // QPlatformVideoSink interface
 public:
@@ -67,19 +64,17 @@ public:
     virtual void setLayer(CALayer *layer);
     virtual void setOutputSettings();
 
-    QMutex *textureCacheMutex() { return &m_textureCacheMutex; }
-
     QRhi *rhi() const { return m_rhi; }
 
     void updateLayerBounds();
     void nativeSizeChanged() { updateLayerBounds(); }
     QSize nativeSize() const { return m_sink ? m_sink->nativeSize() : QSize(); }
 
-    CVMetalTextureCacheRef cvMetalTextureCache = nullptr;
+    QCFType<CVMetalTextureCacheRef> cvMetalTextureCache;
 #if defined(Q_OS_MACOS)
-    CVOpenGLTextureCacheRef cvOpenGLTextureCache = nullptr;
+    QCFType<CVOpenGLTextureCacheRef> cvOpenGLTextureCache;
 #elif defined(Q_OS_IOS)
-    CVOpenGLESTextureCacheRef cvOpenGLESTextureCache = nullptr;
+    QCFType<CVOpenGLESTextureCacheRef> cvOpenGLESTextureCache;
 #endif
 private:
     void freeTextureCaches();
@@ -90,7 +85,6 @@ protected:
     QRhi *m_rhi = nullptr;
     CALayer *m_layer = nullptr;
     NSDictionary *m_outputSettings = nullptr;
-    QMutex m_textureCacheMutex;
 };
 
 

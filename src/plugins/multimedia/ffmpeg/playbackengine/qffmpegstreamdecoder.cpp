@@ -1,66 +1,84 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "playbackengine/qffmpegstreamdecoder_p.h"
+#include "qffmpegstreamdecoder_p.h"
+
 #include "playbackengine/qffmpegmediadataholder_p.h"
-#include <qloggingcategory.h>
+#include <QtCore/qloggingcategory.h>
+#include <QtCore/qregularexpression.h>
+#include <QtCore/qspan.h>
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcStreamDecoder, "qt.multimedia.ffmpeg.streamdecoder");
+Q_STATIC_LOGGING_CATEGORY(qLcStreamDecoder, "qt.multimedia.ffmpeg.streamdecoder");
 
 namespace QFFmpeg {
 
-StreamDecoder::StreamDecoder(const Codec &codec, qint64 absSeekPos)
-    : m_codec(codec),
-      m_absSeekPos(absSeekPos),
-      m_trackType(MediaDataHolder::trackTypeFromMediaType(codec.context()->codec_type))
+using namespace Qt::Literals;
+
+StreamDecoder::StreamDecoder(const PlaybackEngineObjectID &id, const CodecContext &codecContext,
+                             TrackPosition absSeekPos)
+    : PlaybackEngineObject(id),
+      m_codecContext(codecContext),
+      m_trackType(MediaDataHolder::trackTypeFromMediaType(codecContext.context()->codec_type)),
+      m_sessionCtx{ absSeekPos }
 {
     qCDebug(qLcStreamDecoder) << "Create stream decoder, trackType" << m_trackType
-                              << "absSeekPos:" << absSeekPos;
+                              << "absSeekPos:" << absSeekPos.get();
     Q_ASSERT(m_trackType != QPlatformMediaPlayer::NTrackTypes);
 }
 
 StreamDecoder::~StreamDecoder()
 {
-    avcodec_flush_buffers(m_codec.context());
+    avcodec_flush_buffers(m_codecContext.context());
 }
 
-void StreamDecoder::onFinalPacketReceived()
+void StreamDecoder::seek(quint64 sessionID, TrackPosition pos, const LoopOffset &offset)
 {
-    decode({});
+    updateSession(sessionID, [this, pos, offset]() {
+        m_sessionCtx = { offset.loopStartTimeUs.asDuration() + pos };
+        avcodec_flush_buffers(m_codecContext.context());
+    });
 }
 
-void StreamDecoder::setInitialPosition(TimePoint, qint64 trackPos)
+void StreamDecoder::onFinalPacketReceived(PlaybackEngineObjectID sourceID)
 {
-    m_absSeekPos = trackPos;
+    if (checkSessionID(sourceID.sessionID))
+        decode({});
 }
 
 void StreamDecoder::decode(Packet packet)
 {
-    m_packets.enqueue(packet);
+    if (packet.isValid() && !checkSessionID(packet.sourceID().sessionID)) {
+        qCDebug(qLcStreamDecoder) << "Packet session outdated. Source id:" << packet.sourceID()
+                                  << "current id" << id();
+        // no need to report packetProcessed: demuxer must be cleaned up
+        return;
+    }
 
+    m_sessionCtx.packets.enqueue(std::move(packet));
     scheduleNextStep();
 }
 
 void StreamDecoder::doNextStep()
 {
-    auto packet = m_packets.dequeue();
+    Packet packet = m_sessionCtx.packets.dequeue();
 
-    auto decodePacket = [this](Packet packet) {
+    auto decodePacket = [this](const Packet &packet) {
         if (trackType() == QPlatformMediaPlayer::SubtitleStream)
             decodeSubtitle(packet);
         else
             decodeMedia(packet);
     };
 
-    if (packet.isValid() && packet.loopOffset().index != m_offset.index) {
+    if (packet.isValid() && packet.loopOffset().loopIndex != m_sessionCtx.offset.loopIndex) {
         decodePacket({});
 
-        qCDebug(qLcStreamDecoder) << "flush buffers due to new loop:" << packet.loopOffset().index;
+        qCDebug(qLcStreamDecoder) << "flush buffers due to new loop:"
+                                  << packet.loopOffset().loopIndex;
 
-        avcodec_flush_buffers(m_codec.context());
-        m_offset = packet.loopOffset();
+        avcodec_flush_buffers(m_codecContext.context());
+        m_sessionCtx.offset = packet.loopOffset();
     }
 
     decodePacket(packet);
@@ -68,9 +86,9 @@ void StreamDecoder::doNextStep()
     setAtEnd(!packet.isValid());
 
     if (packet.isValid())
-        emit packetProcessed(packet);
+        emit packetProcessed(std::move(packet));
 
-    scheduleNextStep(false);
+    scheduleNextStep();
 }
 
 QPlatformMediaPlayer::TrackType StreamDecoder::trackType() const
@@ -93,13 +111,13 @@ qint32 StreamDecoder::maxQueueSize(QPlatformMediaPlayer::TrackType type)
     }
 }
 
-void StreamDecoder::onFrameProcessed(Frame frame)
+void StreamDecoder::onFrameProcessed(const Frame &frame)
 {
-    if (frame.sourceId() != id())
+    if (!checkID(frame.sourceID()))
         return;
 
-    --m_pendingFramesCount;
-    Q_ASSERT(m_pendingFramesCount >= 0);
+    --m_sessionCtx.pendingFramesCount;
+    Q_ASSERT(m_sessionCtx.pendingFramesCount >= 0);
 
     scheduleNextStep();
 }
@@ -108,21 +126,21 @@ bool StreamDecoder::canDoNextStep() const
 {
     const qint32 maxCount = maxQueueSize(m_trackType);
 
-    return !m_packets.empty() && m_pendingFramesCount < maxCount
+    return !m_sessionCtx.packets.empty() && m_sessionCtx.pendingFramesCount < maxCount
             && PlaybackEngineObject::canDoNextStep();
 }
 
-void StreamDecoder::onFrameFound(Frame frame)
+void StreamDecoder::onFrameFound(const Frame &frame)
 {
-    if (frame.isValid() && frame.absoluteEnd() < m_absSeekPos)
+    if (frame.isValid() && frame.absoluteEnd() < m_sessionCtx.absSeekPos)
         return;
 
-    Q_ASSERT(m_pendingFramesCount >= 0);
-    ++m_pendingFramesCount;
+    Q_ASSERT(m_sessionCtx.pendingFramesCount >= 0);
+    ++m_sessionCtx.pendingFramesCount;
     emit requestHandleFrame(frame);
 }
 
-void StreamDecoder::decodeMedia(Packet packet)
+void StreamDecoder::decodeMedia(const Packet &packet)
 {
     auto sendPacketResult = sendAVPacket(packet);
 
@@ -143,9 +161,9 @@ void StreamDecoder::decodeMedia(Packet packet)
         receiveAVFrames(!packet.isValid());
 }
 
-int StreamDecoder::sendAVPacket(Packet packet)
+int StreamDecoder::sendAVPacket(const Packet &packet)
 {
-    return avcodec_send_packet(m_codec.context(), packet.isValid() ? packet.avPacket() : nullptr);
+    return avcodec_send_packet(m_codecContext.context(), packet.isValid() ? packet.avPacket() : nullptr);
 }
 
 void StreamDecoder::receiveAVFrames(bool flushPacket)
@@ -153,7 +171,7 @@ void StreamDecoder::receiveAVFrames(bool flushPacket)
     while (true) {
         auto avFrame = makeAVFrame();
 
-        const auto receiveFrameResult = avcodec_receive_frame(m_codec.context(), avFrame.get());
+        const auto receiveFrameResult = avcodec_receive_frame(m_codecContext.context(), avFrame.get());
 
         if (receiveFrameResult == AVERROR_EOF || receiveFrameResult == AVERROR(EAGAIN)) {
             if (flushPacket && receiveFrameResult == AVERROR(EAGAIN)) {
@@ -182,11 +200,11 @@ void StreamDecoder::receiveAVFrames(bool flushPacket)
         if (m_trackType == QPlatformMediaPlayer::VideoStream)
             avFrame = copyFromHwPool(std::move(avFrame));
 
-        onFrameFound({ m_offset, std::move(avFrame), m_codec, 0, id() });
+        onFrameFound({ m_sessionCtx.offset, std::move(avFrame), m_codecContext, id() });
     }
 }
 
-void StreamDecoder::decodeSubtitle(Packet packet)
+void StreamDecoder::decodeSubtitle(const Packet &packet)
 {
     if (!packet.isValid())
         return;
@@ -197,7 +215,7 @@ void StreamDecoder::decodeSubtitle(Packet packet)
     int gotSubtitle = 0;
 
     const int res =
-            avcodec_decode_subtitle2(m_codec.context(), &subtitle, &gotSubtitle, packet.avPacket());
+            avcodec_decode_subtitle2(m_codecContext.context(), &subtitle, &gotSubtitle, packet.avPacket());
     //    qCDebug(qLcDecoder) << "       subtitle got:" << res << gotSubtitle << subtitle.format <<
     //    Qt::hex << (quint64)subtitle.pts;
     if (res < 0 || !gotSubtitle)
@@ -205,14 +223,14 @@ void StreamDecoder::decodeSubtitle(Packet packet)
 
     // apparently the timestamps in the AVSubtitle structure are not always filled in
     // if they are missing, use the packets pts and duration values instead
-    qint64 start, end;
+    TrackPosition start = 0, end = 0;
     if (subtitle.pts == AV_NOPTS_VALUE) {
-        start = m_codec.toUs(packet.avPacket()->pts);
-        end = start + m_codec.toUs(packet.avPacket()->duration);
+        start = m_codecContext.toTrackPosition(AVStreamPosition(packet.avPacket()->pts));
+        end = start + m_codecContext.toTrackDuration(AVStreamDuration(packet.avPacket()->duration));
     } else {
         auto pts = timeStampUs(subtitle.pts, AVRational{ 1, AV_TIME_BASE });
-        start = *pts + qint64(subtitle.start_display_time) * 1000;
-        end = *pts + qint64(subtitle.end_display_time) * 1000;
+        start = TrackPosition(*pts + qint64(subtitle.start_display_time) * 1000);
+        end = TrackPosition(*pts + qint64(subtitle.end_display_time) * 1000);
     }
 
     if (end <= start) {
@@ -220,38 +238,48 @@ void StreamDecoder::decodeSubtitle(Packet packet)
         return;
     }
     //        qCDebug(qLcDecoder) << "    got subtitle (" << start << "--" << end << "):";
-    QString text;
-    for (uint i = 0; i < subtitle.num_rects; ++i) {
-        const auto *r = subtitle.rects[i];
-        //            qCDebug(qLcDecoder) << "    subtitletext:" << r->text << "/" << r->ass;
-        if (i)
-            text += QLatin1Char('\n');
-        if (r->text)
-            text += QString::fromUtf8(r->text);
-        else {
-            const char *ass = r->ass;
-            int nCommas = 0;
-            while (*ass) {
-                if (nCommas == 8)
-                    break;
-                if (*ass == ',')
-                    ++nCommas;
-                ++ass;
-            }
-            text += QString::fromUtf8(ass);
-        }
-    }
-    text.replace(QLatin1String("\\N"), QLatin1String("\n"));
-    text.replace(QLatin1String("\\n"), QLatin1String("\n"));
-    text.replace(QLatin1String("\r\n"), QLatin1String("\n"));
-    if (text.endsWith(QLatin1Char('\n')))
-        text.chop(1);
+    QString text = subtitleTextFromAVSubtitle(subtitle);
 
-    onFrameFound({ m_offset, text, start, end - start, id() });
+    onFrameFound({ m_sessionCtx.offset, text, start, end - start, id() });
 
     // TODO: maybe optimize
-    onFrameFound({ m_offset, QString(), end, 0, id() });
+    onFrameFound({ m_sessionCtx.offset, QString(), end, TrackDuration(0), id() });
 }
+
+static QString extractSubtitleText(const AVSubtitleRect &r)
+{
+    if (r.text)
+        return QString::fromUtf8(r.text);
+
+    const char *ass = r.ass;
+    int nCommas = 0;
+    while (*ass) {
+        if (nCommas == 8)
+            break;
+        if (*ass == ',')
+            ++nCommas;
+        ++ass;
+    }
+    return QString::fromUtf8(ass);
+}
+
+QString subtitleTextFromAVSubtitle(const AVSubtitle &subtitle)
+{
+    QString text;
+
+    for (const AVSubtitleRect *r : QSpan(subtitle.rects, subtitle.num_rects)) {
+        if (r != subtitle.rects[0])
+            text += u'\n';
+
+        text += extractSubtitleText(*r);
+    }
+    static const QRegularExpression lineBreakRe(u"\\\\N|\\\\n|\\r\\n"_s);
+    text.replace(lineBreakRe, u"\n"_s);
+    if (text.endsWith(u'\n'))
+        text.chop(1);
+    return text;
+}
+
 } // namespace QFFmpeg
 
 QT_END_NAMESPACE

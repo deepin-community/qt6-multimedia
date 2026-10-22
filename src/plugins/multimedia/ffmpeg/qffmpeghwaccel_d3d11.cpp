@@ -2,13 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qffmpeghwaccel_d3d11_p.h"
-#include "playbackengine/qffmpegstreamdecoder_p.h"
 
 #include <qvideoframeformat.h>
-#include "qffmpegvideobuffer_p.h"
 
 #include <private/qvideotexturehelper_p.h>
-#include <private/qcomptr_p.h>
+#include <QtCore/private/qcomptr_p.h>
 #include <private/quniquehandle_p.h>
 
 #include <rhi/qrhi.h>
@@ -57,21 +55,20 @@ const AVD3D11VADeviceContext *getHwDeviceContext(const AVHWDeviceContext *ctx)
     return static_cast<AVD3D11VADeviceContext *>(ctx->hwctx);
 }
 
-void freeTextureAndData(void *opaque, uint8_t *data)
-{
-    static_cast<ID3D11Texture2D *>(opaque)->Release();
-    av_free(data);
-}
-
 AVBufferRef *wrapTextureAsBuffer(const ComPtr<ID3D11Texture2D> &tex)
 {
+    Q_ASSERT(tex);
+
     AVD3D11FrameDescriptor *avFrameDesc =
             static_cast<AVD3D11FrameDescriptor *>(av_mallocz(sizeof(AVD3D11FrameDescriptor)));
     avFrameDesc->index = 0;
     avFrameDesc->texture = tex.Get();
 
     return av_buffer_create(reinterpret_cast<uint8_t *>(avFrameDesc),
-                            sizeof(AVD3D11FrameDescriptor *), freeTextureAndData, tex.Get(), 0);
+                            sizeof(AVD3D11FrameDescriptor *), [](void *opaque, uint8_t *data) {
+        static_cast<ID3D11Texture2D *>(opaque)->Release();
+        av_free(data);
+    }, tex.Get(), 0);
 }
 
 ComPtr<ID3D11Texture2D> copyTexture(const AVD3D11VADeviceContext *hwDevCtx, const AVFrame *src)
@@ -145,7 +142,7 @@ ComPtr<ID3D11Texture2D> TextureBridge::copyFromSharedTex(const ComPtr<ID3D11Devi
 
 bool TextureBridge::ensureDestTex(const ComPtr<ID3D11Device1> &dev)
 {
-    if (m_destDevice != dev) {
+    if (m_destDevice.Get() != dev.Get()) {
         // Destination device changed. Recreate texture.
         m_destTex = nullptr;
         m_destDevice = dev;
@@ -247,25 +244,29 @@ bool TextureBridge::recreateSrc(ID3D11Device *dev, const ComPtr<ID3D11Texture2D>
     return true;
 }
 
-class D3D11TextureSet : public TextureSet
+namespace {
+class D3D11TextureHandles : public QVideoFrameTexturesHandles
 {
 public:
-    D3D11TextureSet(QRhi *rhi, ComPtr<ID3D11Texture2D> &&tex)
-        : m_owner{ rhi }, m_tex(std::move(tex))
+    D3D11TextureHandles(TextureConverterBackendPtr &&converterBackend, QRhi *rhi,
+                        ComPtr<ID3D11Texture2D> &&tex)
+        : m_parentConverterBackend(std::move(converterBackend)), m_owner{ rhi }, m_tex(std::move(tex))
     {
     }
 
-    qint64 textureHandle(QRhi *rhi, int /*plane*/) override
+    quint64 textureHandle(QRhi &rhi, int /*plane*/) override
     {
-        if (rhi != m_owner)
+        if (&rhi != m_owner)
             return 0u;
         return reinterpret_cast<qint64>(m_tex.Get());
     }
 
 private:
+    TextureConverterBackendPtr m_parentConverterBackend; // ensures the backend is deleted after the texture
     QRhi *m_owner = nullptr;
     ComPtr<ID3D11Texture2D> m_tex;
 };
+}
 
 D3D11TextureConverter::D3D11TextureConverter(QRhi *rhi)
     : TextureConverterBackend(rhi), m_rhiDevice{ GetD3DDevice(rhi) }
@@ -276,7 +277,9 @@ D3D11TextureConverter::D3D11TextureConverter(QRhi *rhi)
     m_rhiDevice->GetImmediateContext(m_rhiCtx.GetAddressOf());
 }
 
-TextureSet *D3D11TextureConverter::getTextures(AVFrame *frame)
+QVideoFrameTexturesHandlesUPtr
+D3D11TextureConverter::createTextureHandles(AVFrame *frame,
+                                            QVideoFrameTexturesHandlesUPtr /*oldHandles*/)
 {
     if (!m_rhiDevice)
         return nullptr;
@@ -320,7 +323,7 @@ TextureSet *D3D11TextureConverter::getTextures(AVFrame *frame)
         if (!output)
             return nullptr;
 
-        return new D3D11TextureSet(rhi, std::move(output));
+        return std::make_unique<D3D11TextureHandles>(shared_from_this(), rhi, std::move(output));
     }
 
     return nullptr;
@@ -368,6 +371,9 @@ AVFrameUPtr copyFromHwPoolD3D11(AVFrameUPtr src)
         destTex = copyTexture(hwDevCtx, src.get());
         hwDevCtx->unlock(hwDevCtx->lock_ctx);
     }
+
+    if (!destTex)
+        return src;
 
     dest->buf[0] = wrapTextureAsBuffer(destTex);
     dest->data[0] = reinterpret_cast<uint8_t *>(destTex.Detach());

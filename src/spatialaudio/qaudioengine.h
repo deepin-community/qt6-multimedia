@@ -24,7 +24,7 @@ public:
     QAudioEngine() : QAudioEngine(nullptr) {};
     explicit QAudioEngine(QObject *parent) : QAudioEngine(44100, parent) {}
     explicit QAudioEngine(int sampleRate, QObject *parent = nullptr);
-    ~QAudioEngine();
+    ~QAudioEngine() override;
 
     enum OutputMode {
         Surround,
@@ -71,8 +71,9 @@ public Q_SLOTS:
     void resume() { setPaused(false); }
 
 private:
-    friend class QAudioEnginePrivate;
-    QAudioEnginePrivate *d;
+    Q_DECLARE_PRIVATE(QAudioEngine)
+
+    QT6_ONLY(Q_DECL_UNUSED_MEMBER void *unused = nullptr;) // for ABI compatibility
 };
 
 QT_END_NAMESPACE

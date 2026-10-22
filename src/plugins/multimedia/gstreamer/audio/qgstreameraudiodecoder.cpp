@@ -5,9 +5,9 @@
 #include <audio/qgstreameraudiodecoder_p.h>
 
 #include <common/qgst_debug_p.h>
-#include <common/qgstappsource_p.h>
 #include <common/qgstreamermessage_p.h>
 #include <common/qgstutils_p.h>
+#include <uri_handler/qgstreamer_qiodevice_handler_p.h>
 
 #include <gst/gstvalue.h>
 #include <gst/base/gstbasesrc.h>
@@ -24,7 +24,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcGstreamerAudioDecoder, "qt.multimedia.gstreameraudiodecoder");
+Q_STATIC_LOGGING_CATEGORY(qLcGstreamerAudioDecoder, "qt.multimedia.gstreameraudiodecoder");
 
 typedef enum {
     GST_PLAY_FLAG_VIDEO         = 0x00000001,
@@ -39,11 +39,11 @@ typedef enum {
 } GstPlayFlags;
 
 
-QMaybe<QPlatformAudioDecoder *> QGstreamerAudioDecoder::create(QAudioDecoder *parent)
+q23::expected<QPlatformAudioDecoder *, QString> QGstreamerAudioDecoder::create(QAudioDecoder *parent)
 {
     static const auto error = qGstErrorMessageIfElementsNotAvailable("audioconvert", "playbin");
     if (error)
-        return *error;
+        return q23::unexpected{ *error };
 
     return new QGstreamerAudioDecoder(parent);
 }
@@ -71,9 +71,6 @@ QGstreamerAudioDecoder::QGstreamerAudioDecoder(QAudioDecoder *parent)
 
     g_object_set(m_playbin.object(), "audio-sink", m_outputBin.element(), NULL);
 
-    m_deepNotifySourceConnection = m_playbin.connect(
-            "deep-notify::source", (GCallback)&configureAppSrcElement, (gpointer)this);
-
     // Set volume to 100%
     gdouble volume = 1.0;
     m_playbin.set("volume", volume);
@@ -84,26 +81,6 @@ QGstreamerAudioDecoder::~QGstreamerAudioDecoder()
     stop();
 
     m_playbin.removeMessageFilter(this);
-}
-
-void QGstreamerAudioDecoder::configureAppSrcElement([[maybe_unused]] GObject *object, GObject *orig,
-                                                    [[maybe_unused]] GParamSpec *pspec,
-                                                    QGstreamerAudioDecoder *self)
-{
-    QGstElementHandle appsrc;
-    g_object_get(orig, "source", &appsrc, NULL);
-
-    GstAppSrc *gstAppSrc = qGstSafeCast<GstAppSrc>(appsrc.release());
-
-    if (gstAppSrc) {
-        // NOLINTBEGIN(clang-analyzer-cplusplus.NewDeleteLeaks)
-        // GstAppSrc takes ownership of QGstAppSource
-
-        QGstAppSource *appSource = new QGstAppSource(gstAppSrc, self->mDevice);
-        Q_ASSERT(appSource);
-        // NOLINTEND(clang-analyzer-cplusplus.NewDeleteLeaks)
-    }
-    return;
 }
 
 bool QGstreamerAudioDecoder::processBusMessage(const QGstreamerMessage &message)
@@ -135,6 +112,11 @@ bool QGstreamerAudioDecoder::processBusMessage(const QGstreamerMessage &message)
     default:
         return false;
     }
+}
+
+bool QGstreamerAudioDecoder::canReadQrc() const
+{
+    return true;
 }
 
 bool QGstreamerAudioDecoder::processBusMessageError(const QGstreamerMessage &message)
@@ -313,7 +295,8 @@ void QGstreamerAudioDecoder::start()
             return;
         }
 
-        m_playbin.set("uri", "appsrc://");
+        QUrl streamURL = qGstRegisterQIODevice(mDevice);
+        m_playbin.set("uri", streamURL.toEncoded().constData());
     } else {
         return;
     }
@@ -350,15 +333,8 @@ void QGstreamerAudioDecoder::stop()
         bufferAvailableChanged(false);
     }
 
-    if (m_position != invalidPosition) {
-        m_position = invalidPosition;
-        positionChanged(m_position.count());
-    }
-
-    if (m_duration != invalidDuration) {
-        m_duration = invalidDuration;
-        durationChanged(m_duration.count());
-    }
+    positionChanged(kInvalidPosition);
+    durationChanged(kInvalidDuration);
 
     setIsDecoding(false);
 }
@@ -402,36 +378,23 @@ QAudioBuffer QGstreamerAudioDecoder::read()
         // XXX At the moment we have to copy data from GstBuffer into QAudioBuffer.
         // We could improve performance by implementing QAbstractAudioBuffer for GstBuffer.
         nanoseconds position = getPositionFromBuffer(buffer);
-        audioBuffer = QAudioBuffer{
-            QByteArray(bufferData, bufferSize),
-            format,
-            round<microseconds>(position).count(),
-        };
-        milliseconds positionInMs = round<milliseconds>(position);
-        if (position != m_position) {
-            m_position = positionInMs;
-            positionChanged(m_position.count());
-        }
+        // QAudioBuffer expects startTime in microseconds, but the platform
+        // QPlatformAudioDecoder stores/uses milliseconds resolution. Convert
+        // the nanoseconds position to microseconds for the buffer, and to
+        // milliseconds for the stored platform position.
+        const auto startUs = std::chrono::round<std::chrono::microseconds>(position);
+        audioBuffer = QAudioBuffer{ QByteArray(bufferData, bufferSize), format, startUs.count() };
+        positionChanged(std::chrono::round<std::chrono::milliseconds>(position));
     }
     gst_buffer_unmap(buffer, &mapInfo);
 
     return audioBuffer;
 }
 
-qint64 QGstreamerAudioDecoder::position() const
-{
-    return m_position.count();
-}
-
-qint64 QGstreamerAudioDecoder::duration() const
-{
-    return m_duration.count();
-}
-
 void QGstreamerAudioDecoder::processInvalidMedia(QAudioDecoder::Error errorCode, const QString& errorString)
 {
     stop();
-    error(int(errorCode), errorString);
+    error(errorCode, errorString);
 }
 
 GstFlowReturn QGstreamerAudioDecoder::newSample(GstAppSink *)
@@ -517,16 +480,13 @@ void QGstreamerAudioDecoder::removeAppSink()
 
 void QGstreamerAudioDecoder::updateDuration()
 {
-    std::optional<std::chrono::milliseconds> duration = m_playbin.durationInMs();
-    if (!duration)
-        duration = invalidDuration;
+    std::optional<std::chrono::milliseconds> dur = m_playbin.durationInMs();
+    if (!dur)
+        dur = kInvalidDuration;
 
-    if (m_duration != duration) {
-        m_duration = *duration;
-        durationChanged(m_duration.count());
-    }
+    durationChanged(*dur);
 
-    if (m_duration.count() > 0)
+    if (dur->count() > 0)
         m_durationQueries = 0;
 
     if (m_durationQueries > 0) {
@@ -545,7 +505,7 @@ std::chrono::nanoseconds QGstreamerAudioDecoder::getPositionFromBuffer(GstBuffer
     if (position >= 0ns)
         return position;
     else
-        return invalidPosition;
+        return std::chrono::nanoseconds{ kInvalidPosition };
 }
 
 QT_END_NAMESPACE

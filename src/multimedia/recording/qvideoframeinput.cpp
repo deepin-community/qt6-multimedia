@@ -1,11 +1,12 @@
 // Copyright (C) 2024 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
-#include "qaudiobuffer.h"
 #include "qvideoframeinput.h"
-#include "qmediaframeinput_p.h"
-#include "qmediainputencoderinterface_p.h"
-#include "qplatformvideoframeinput_p.h"
+
+#include <QtMultimedia/qaudiobuffer.h>
+#include <QtMultimedia/private/qmediaframeinput_p.h>
+#include <QtMultimedia/private/qmediainputencoderinterface_p.h>
+#include <QtMultimedia/private/qplatformvideoframeinput_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -74,7 +75,19 @@ private:
     \brief The QVideoFrameInput class is used for providing custom video frames
     to \l QMediaRecorder or a video output through \l QMediaCaptureSession.
 
-    \sa QMediaRecorder, QMediaCaptureSession, QVideoSink, QVideoOutput
+    QVideoFrameInput is only supported with the FFmpeg backend.
+
+    \include qmediainput-pull-mode.qdocinc {pull-mode} {QVideoFrameInput} {video frame} {sendVideoFrame} {readyToSendVideoFrame}
+
+    \snippet custommediainputsnippets/custommediainputsnippets.cpp QVideoFrameInput setup
+
+    Here's a minimal implementation of the slot function that provides video frames:
+
+    \snippet custommediainputsnippets/custommediainputsnippets.cpp nextVideoFrame()
+
+    For more details see readyToSendVideoFrame() and sendVideoFrame().
+
+    \sa QMediaRecorder, QMediaCaptureSession and QVideoSink.
 */
 
 /*!

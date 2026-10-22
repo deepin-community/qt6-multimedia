@@ -1,21 +1,96 @@
 // Copyright (C) 2021 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
-#include <QtCore/qlocale.h>
-#include <QtCore/QTemporaryDir>
-#include <QtCore/QSharedPointer>
-#include <QtCore/QScopedPointer>
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
+#include <QtCore/qsemaphore.h>
+#include <QtCore/qtemporarydir.h>
 
-#include "../shared/audiogenerationutils.h"
-#include <qaudiosink.h>
-#include <qaudiodevice.h>
-#include <qaudioformat.h>
-#include <qaudio.h>
-#include <qmediadevices.h>
-#include <qwavedecoder.h>
+#include <QtMultimedia/qaudio.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qaudioformat.h>
+#include <QtMultimedia/qaudiosink.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/qwavedecoder.h>
+#include <QtMultimedia/private/qaudiosystem_p.h>
+#include <QtMultimedia/private/qplatformaudiodevices_p.h>
+#include <QtMultimedia/private/qplatformmediaintegration_p.h>
 
-#define AUDIO_BUFFER 192000
+#include <private/audiogenerationutils_p.h>
+#include <private/mediabackendutils_p.h>
+#include <private/multimedia_debug_support_p.h>
+#include <private/osdetection_p.h>
+#include <private/qmockiodevice_p.h>
+
+#include <atomic>
+#include <memory>
+
+QT_WARNING_DISABLE_DEPRECATED; // Tests use QWaveDecoder
+
+using AudioSinkInitializer = bool (*)(QAudioSink &);
+
+class AudioPullSource : public QIODevice
+{
+public:
+    AudioPullSource(bool isContinuous, QAudioFormat format)
+        : AudioPullSource{ isContinuous,
+                           format.sampleFormat() == QAudioFormat::UInt8 ? std::byte{ 0x80 }
+                                                                        : std::byte{ 0 } }
+    {
+    }
+
+    AudioPullSource(bool isContinuous = false, std::byte nullByte = std::byte{ 0 })
+        : available(isContinuous ? std::numeric_limits<int>::max() : 0),
+          m_isContinuous(isContinuous),
+          m_nullByte(nullByte)
+    {
+    }
+
+    qint64 readData(char *data, qint64 len) override
+    {
+        qint64 read = qMin(len, available);
+        if (!m_isContinuous)
+            available -= read;
+        memset(data, int(m_nullByte), read);
+        return read;
+    }
+    qint64 writeData(const char *, qint64) override { return 0; }
+    bool isSequential() const override { return true; }
+
+    qint64 bytesAvailable() const override { return available; }
+    bool atEnd() const override { return signalEnd && available == 0; }
+
+    qint64 available = 0;
+    bool signalEnd = false;
+
+private:
+    bool m_isContinuous;
+    const std::byte m_nullByte;
+};
+
+static bool isPipewireBackend()
+{
+    return QPlatformMediaIntegration::audioBackendName() == "PipeWire";
+}
+
+static bool isPulseAudioBackend()
+{
+    return QPlatformMediaIntegration::audioBackendName() == "PulseAudio";
+}
+
+static bool isQnxSndBackend()
+{
+    return QPlatformMediaIntegration::audioBackendName() == "QNX-snd";
+}
+
+static bool underrunIsAnError()
+{
+#if defined(Q_OS_APPLE) || defined(Q_OS_ANDROID) || defined(Q_OS_HARMONY) || defined(Q_OS_WINDOWS)
+    return false;
+#endif
+
+    return !(isPipewireBackend() || isPulseAudioBackend() || isQnxSndBackend());
+}
 
 class tst_QAudioSink : public QObject
 {
@@ -30,11 +105,19 @@ private slots:
     void format();
     void invalidFormat_data();
     void invalidFormat();
+    void nullFormat();
+
+    void start_withSupportedSampleFormats_data();
+    void start_withSupportedSampleFormats();
 
     void bufferSize_data();
     void bufferSize();
+    void bufferSize_getValidDefault();
+    void bufferSize_setAfterStart();
+    void bufferSize_updatedAfterStart();
 
     void stopWhileStopped();
+    void stopWhileSuspended();
     void suspendWhileStopped();
     void resumeWhileStopped();
 
@@ -59,8 +142,34 @@ private slots:
     void volume_data();
     void volume();
 
+    void nativePeriodFrameCount_getReturnsMinusOneWhenUnset();
+    void nativePeriodFrameCount_setValidValues();
+    void nativePeriodFrameCount_getReturnsSet();
+    void nativePeriodFrameCount_setInvalidValues();
+    void nativePeriodFrameCount_rejectWhenNotStopped();
+    void nativePeriodFrameCount_setMinusOneUnsets();
+
+    void stop_stopsAudioSink_whenInvokedUponFirstStateChange_data();
+    void stop_stopsAudioSink_whenInvokedUponFirstStateChange();
+
+    void stateChanged_stringBasedConnect();
+
+    void callbackAPI();
+    void callbackAPI_availabilityCheck();
+    void callbackAPI_startFailsWithWrongType();
+    void callbackAPI_startWithMoveOnlyFunctor();
+    void callbackAPI_suspendPreventsCallbackInvocation_data();
+    void callbackAPI_suspendPreventsCallbackInvocation();
+
+    void multipleSinks_data() { generate_multiple_sinks_testrows(); }
+    void multipleSinks();
+    void start_afterStopAndReset_data() { generate_multiple_sinks_testrows(); }
+    void start_afterStopAndReset();
+
+    void destroy_while_running(); // should be last test to catch crash on exit
+
 private:
-    using FilePtr = QSharedPointer<QFile>;
+    using FilePtr = std::shared_ptr<QFile>;
 
     static QString formatToFileName(const QAudioFormat &format);
     static QString dumpStateSignalSpy(const QSignalSpy &stateSignalSpy);
@@ -73,11 +182,13 @@ private:
                                     bool checkOnlyFirst = false);
 
     void generate_audiofile_testrows();
+    void generate_multiple_sinks_testrows();
 
     QAudioDevice audioDevice;
+    std::optional<QAudioDevice> secondDevice;
     QList<QAudioFormat> testFormats;
     QList<FilePtr> audioFiles;
-    QScopedPointer<QTemporaryDir> m_temporaryDir;
+    std::unique_ptr<QTemporaryDir> m_temporaryDir;
 };
 
 QString tst_QAudioSink::formatToFileName(const QAudioFormat &format)
@@ -95,7 +206,7 @@ QString tst_QAudioSink::dumpStateSignalSpy(const QSignalSpy& stateSignalSpy) {
     {
         if (!std::exchange(first, false))
             result += ',';
-        result += QString::number(params.front().value<QAudio::State>());
+        result += qAsQString(params.front().value<QAudio::State>());
     }
     result.append(']');
     return result;
@@ -154,16 +265,37 @@ void tst_QAudioSink::generate_audiofile_testrows()
     }
 }
 
+void tst_QAudioSink::generate_multiple_sinks_testrows()
+{
+    QTest::addColumn<QAudioDevice>("firstSinkDevice");
+    QTest::addColumn<QAudioDevice>("secondSinkDevice");
+
+    QTest::newRow("Primary device only") << audioDevice << audioDevice;
+    if (secondDevice) {
+        QTest::newRow("Secondary device started after primary device")
+                << audioDevice << *secondDevice;
+        QTest::newRow("Primary device started after secondary device")
+                << *secondDevice << audioDevice;
+        QTest::newRow("Secondary device only") << *secondDevice << *secondDevice;
+    }
+}
+
 void tst_QAudioSink::initTestCase()
 {
-    // Only perform tests if audio output device exists
     const QList<QAudioDevice> devices = QMediaDevices::audioOutputs();
 
-    if (devices.size() <= 0)
-        QSKIP("No audio backend");
+    // Only perform tests if audio output device exists
+    if (devices.isEmpty())
+        QSKIP("No audio outputs found");
 
     audioDevice = QMediaDevices::defaultAudioOutput();
 
+    // Some tests use a second device as well
+    if (devices.size() > 1) {
+        for (auto device : devices)
+            if (!device.isDefault())
+                secondDevice = device;
+    }
 
     QAudioFormat format;
 
@@ -172,41 +304,30 @@ void tst_QAudioSink::initTestCase()
             testFormats.append(audioDevice.preferredFormat());
     }
 
-    // PCM 11025 mono S16LE
-    format.setChannelCount(1);
-    format.setSampleRate(11025);
     format.setSampleFormat(QAudioFormat::Int16);
-    if (audioDevice.isFormatSupported(format))
-        testFormats.append(format);
+    for (int channels : { 1, 2 }) {
+        format.setChannelCount(channels);
+        for (int rate : { 44100, 48000 }) {
+            format.setSampleRate(rate);
 
-    // PCM 22050 mono S16LE
-    format.setSampleRate(22050);
-    if (audioDevice.isFormatSupported(format))
-        testFormats.append(format);
+            if (audioDevice.isFormatSupported(format))
+                testFormats.append(format);
+        }
+    }
 
-    // PCM 22050 stereo S16LE
-    format.setChannelCount(2);
-    if (audioDevice.isFormatSupported(format))
-        testFormats.append(format);
-
-    // PCM 44100 stereo S16LE
-    format.setSampleRate(44100);
-    if (audioDevice.isFormatSupported(format))
 #ifdef Q_OS_ANDROID
-        // Testset crash on emulator x86 with API 23 (Android 6) for 44,1 MHz.
-        // It is not happen on x86 with API 24. What is more, there is no crash when
-        // tested sample rate is 44,999 or any other value. Seems like problem on
-        // emulator side. Let's turn off this frequency for API 23
-        if (QNativeInterface::QAndroidApplication::sdkVersion() > __ANDROID_API_M__)
+    // Testset crash on emulator x86 with API 23 (Android 6) for 44,1 MHz.
+    // It is not happen on x86 with API 24. What is more, there is no crash when
+    // tested sample rate is 44,999 or any other value. Seems like problem on
+    // emulator side. Let's turn off this frequency for API 23
+    if (QNativeInterface::QAndroidApplication::sdkVersion() <= __ANDROID_API_M__)
+        testFormats.removeIf([](const QAudioFormat &fmt) {
+            return fmt.sampleRate() == 44100;
+        });
 #endif
-        testFormats.append(format);
 
-    // PCM 48000 stereo S16LE
-    format.setSampleRate(48000);
-    if (audioDevice.isFormatSupported(format))
-        testFormats.append(format);
-
-    QVERIFY(testFormats.size());
+    if (testFormats.empty())
+        QSKIP("audio devices does not support test format"); // e.g RME Fireface / pipewire
 
     const QChar slash = QLatin1Char('/');
     QString temporaryPattern = QDir::tempPath();
@@ -225,7 +346,7 @@ void tst_QAudioSink::initTestCase()
                                  + formatToFileName(format) + QStringLiteral(".wav");
         FilePtr file(new QFile(fileName));
         QVERIFY2(file->open(QIODevice::WriteOnly), qPrintable(file->errorString()));
-        QWaveDecoder waveDecoder(file.data(), format);
+        QWaveDecoder waveDecoder(file.get(), format);
         if (waveDecoder.open(QIODevice::WriteOnly)) {
             waveDecoder.write(data);
             waveDecoder.close();
@@ -243,10 +364,10 @@ void tst_QAudioSink::cleanupTestCase()
 
 void tst_QAudioSink::format()
 {
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
     QAudioFormat requested = audioDevice.preferredFormat();
-    QAudioFormat actual    = audioOutput.format();
+    QAudioFormat actual = audioSink.format();
 
     QVERIFY2((requested.channelCount() == actual.channelCount()),
              QStringLiteral("channels: requested=%1, actual=%2")
@@ -275,9 +396,6 @@ void tst_QAudioSink::invalidFormat_data()
 
     QAudioFormat format;
 
-    QTest::newRow("Null Format")
-            << format;
-
     format = audioDevice.preferredFormat();
     format.setChannelCount(0);
     QTest::newRow("Channel count 0")
@@ -301,21 +419,74 @@ void tst_QAudioSink::invalidFormat()
     QVERIFY2(!audioDevice.isFormatSupported(invalidFormat),
             "isFormatSupported() is returning true on an invalid format");
 
-    QAudioSink audioOutput(invalidFormat, this);
+    QAudioSink audioSink(invalidFormat, this);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
 
-    audioOutput.start();
+    QTest::ignoreMessage(QtWarningMsg, "QAudioSink::start: QAudioFormat not valid");
+
+    audioSink.start();
     // Check that error is raised
-    QTRY_VERIFY2((audioOutput.error() == QAudio::OpenError),"error() was not set to QAudio::OpenError after start()");
+    QTRY_VERIFY2((audioSink.error() == QAudio::OpenError),
+                 "error() was not set to QAudio::OpenError after start()");
+}
+
+void tst_QAudioSink::nullFormat()
+{
+    QAudioDevice audioDevice = QMediaDevices::defaultAudioOutput();
+    if (audioDevice.isNull())
+        QSKIP("No audio outputs found");
+
+    {
+        QAudioSink audioSink;
+        QCOMPARE(audioSink.format(), audioDevice.preferredFormat());
+    }
+    {
+        QAudioSink audioSink(audioDevice);
+        QCOMPARE(audioSink.format(), audioDevice.preferredFormat());
+    }
+}
+
+void tst_QAudioSink::start_withSupportedSampleFormats_data()
+{
+    QTest::addColumn<QAudioFormat::SampleFormat>("sampleFormat");
+    for (auto sampleFormat : audioDevice.supportedSampleFormats()) {
+        QTest::newRow(QStringLiteral("Sample format: %1").arg(sampleFormat).toUtf8().constData())
+                      << sampleFormat;
+    }
+}
+
+void tst_QAudioSink::start_withSupportedSampleFormats()
+{
+    // Arrange
+    QFETCH(QAudioFormat::SampleFormat, sampleFormat);
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(sampleFormat);
+    QAudioSink sink(audioDevice, format);
+
+    AudioPullSource source(true, format);
+    source.open(QIODevice::ReadOnly);
+
+    QSignalSpy stateSignal(&sink, &QAudioSink::stateChanged);
+
+    // Act
+    sink.start(&source);
+
+    // Assert
+    QTRY_COMPARE(stateSignal.count(), 1);
+    QCOMPARE(sink.state(), QAudio::ActiveState);
+    QCOMPARE(sink.error(), QAudio::NoError);
+    QTRY_COMPARE_GT(sink.processedUSecs(), 0);
 }
 
 void tst_QAudioSink::bufferSize_data()
 {
     QTest::addColumn<int>("bufferSize");
-    QTest::newRow("Buffer size 512") << 512;
+    QTest::newRow("Buffer size 1024") << 1024;
     QTest::newRow("Buffer size 4096") << 4096;
     QTest::newRow("Buffer size 8192") << 8192;
 }
@@ -323,22 +494,57 @@ void tst_QAudioSink::bufferSize_data()
 void tst_QAudioSink::bufferSize()
 {
     QFETCH(int, bufferSize);
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError),
+    QVERIFY2((audioSink.error() == QAudio::NoError),
              QStringLiteral("error() was not set to QAudio::NoError on creation(%1)")
                      .arg(bufferSize)
                      .toUtf8()
                      .constData());
 
-    audioOutput.setBufferSize(bufferSize);
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after setBufferSize");
-    QVERIFY2((audioOutput.bufferSize() == bufferSize),
+    audioSink.setBufferSize(bufferSize);
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() is not QAudio::NoError after setBufferSize");
+    QVERIFY2((audioSink.bufferSize() == bufferSize),
              QStringLiteral("bufferSize: requested=%1, actual=%2")
                      .arg(bufferSize)
-                     .arg(audioOutput.bufferSize())
+                     .arg(audioSink.bufferSize())
                      .toUtf8()
                      .constData());
+}
+
+void tst_QAudioSink::bufferSize_getValidDefault()
+{
+#if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+    QSKIP("bufferSize validation only fully implemented on Mac and Windows");
+#endif
+
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    QCOMPARE_GE(audioSink.bufferSize(),
+                audioDevice.preferredFormat().bytesForDuration(250'000)); // 250ms
+}
+
+void tst_QAudioSink::bufferSize_setAfterStart()
+{
+#if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+    QSKIP("bufferSize validation only fully implemented on Mac and Windows");
+#endif
+
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    audioSink.start();
+    QCOMPARE_GE(audioSink.bufferSize(), audioDevice.preferredFormat().bytesForFrames(32));
+}
+
+void tst_QAudioSink::bufferSize_updatedAfterStart()
+{
+#if !(defined(Q_OS_MACOS) || defined(Q_OS_WIN))
+    QSKIP("bufferSize validation only fully implemented on Mac and Windows");
+#endif
+
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    audioSink.setBufferSize(1); // small enough force a size increase
+    audioSink.start();
+    QCOMPARE_GE(audioSink.bufferSize(), audioDevice.preferredFormat().bytesForFrames(32));
 }
 
 void tst_QAudioSink::stopWhileStopped()
@@ -348,17 +554,36 @@ void tst_QAudioSink::stopWhileStopped()
     //  - No state change occurs
     //  - No error is raised (QAudioSink::error() returns QAudio::NoError)
 
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
-    audioOutput.stop();
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
+    audioSink.stop();
 
     // Check that no state transition occurred
     QVERIFY2((stateSignal.size() == 0), "stop() while stopped is emitting a signal and it shouldn't");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError after stop()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError after stop()");
+}
+
+void tst_QAudioSink::stopWhileSuspended()
+{
+    using namespace std::chrono_literals;
+
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    audioSink.start();
+    QTest::qWait(10ms); // give WASAPI worker thread a bit of time to arrive at WaitForSingleObject
+
+    audioSink.suspend();
+    QTRY_COMPARE_EQ(audioSink.state(), QAudio::SuspendedState);
+    QTest::qWait(10ms); // give WASAPI worker thread a bit of time to arrive at WaitForSingleObject
+
+    audioSink.stop();
+    QTRY_COMPARE_EQ(audioSink.state(), QAudio::StoppedState);
 }
 
 void tst_QAudioSink::suspendWhileStopped()
@@ -368,17 +593,20 @@ void tst_QAudioSink::suspendWhileStopped()
     //  - No state change occurs
     //  - No error is raised (QAudioSink::error() returns QAudio::NoError)
 
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
-    audioOutput.suspend();
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
+    audioSink.suspend();
 
     // Check that no state transition occurred
     QVERIFY2((stateSignal.size() == 0), "stop() while suspended is emitting a signal and it shouldn't");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError after stop()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError after stop()");
 }
 
 void tst_QAudioSink::resumeWhileStopped()
@@ -388,17 +616,20 @@ void tst_QAudioSink::resumeWhileStopped()
     //  - No state change occurs
     //  - No error is raised (QAudioSink::error() returns QAudio::NoError)
 
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
-    audioOutput.resume();
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
+    audioSink.resume();
 
     // Check that no state transition occurred
     QVERIFY2((stateSignal.size() == 0), "resume() while stopped is emitting a signal and it shouldn't");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError after resume()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError after resume()");
 }
 
 void tst_QAudioSink::pull()
@@ -406,22 +637,24 @@ void tst_QAudioSink::pull()
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
 
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setVolume(0.1f);
+    audioSink.setVolume(0.1f);
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
-    QVERIFY2((audioOutput.elapsedUSecs() == qint64(0)),"elapsedUSecs() not zero on creation");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.elapsedUSecs() == qint64(0)), "elapsedUSecs() not zero on creation");
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    audioOutput.start(audioFile.data());
+    audioSink.start(audioFile.get());
 
     // Check that QAudioSink immediately transitions to ActiveState
     QTRY_VERIFY2((stateSignal.size() == 1),
@@ -429,34 +662,39 @@ void tst_QAudioSink::pull()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::ActiveState), "didn't transition to ActiveState after start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after start()");
+    QVERIFY2((audioSink.state() == QAudio::ActiveState),
+             "didn't transition to ActiveState after start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after start()");
     stateSignal.clear();
 
     // Check that 'elapsed' increases
     QTest::qWait(40);
-    QVERIFY2((audioOutput.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
+    QVERIFY2((audioSink.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
 
-    // Wait until playback finishes
-    QTRY_VERIFY2(audioFile->atEnd(), "didn't play to EOF");
+    // Wait until playback finishes using a high timeout to avoid flakiness in CI
+    QTRY_VERIFY2_WITH_TIMEOUT(audioFile->atEnd(), "didn't play to EOF", 60s);
     QTRY_VERIFY(stateSignal.size() > 0);
     QTRY_COMPARE(qvariant_cast<QAudio::State>(stateSignal.last().at(0)), QAudio::IdleState);
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transitions to IdleState when at EOF");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transitions to IdleState when at EOF");
     stateSignal.clear();
 
-    QTRY_COMPARE(audioOutput.processedUSecs(), 1000000);
+    QTRY_COMPARE(audioSink.processedUSecs(), 1000000);
 
-    audioOutput.stop();
+    audioSink.stop();
     QTest::qWait(40);
     QVERIFY2((stateSignal.size() == 1),
              QStringLiteral("didn't emit StoppedState signal after stop(), got %1 signals instead")
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "didn't transitions to StoppedState after stop()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "didn't transitions to StoppedState after stop()");
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
-    QVERIFY2((audioOutput.elapsedUSecs() == (qint64)0), "elapsedUSecs() not equal to zero in StoppedState");
+    QVERIFY2((audioSink.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
+    QVERIFY2((audioSink.elapsedUSecs() == (qint64)0),
+             "elapsedUSecs() not equal to zero in StoppedState");
 
     audioFile->close();
 }
@@ -465,37 +703,40 @@ void tst_QAudioSink::pullSuspendResume()
 {
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setVolume(0.1f);
+    audioSink.setVolume(0.1f);
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
-    QVERIFY2((audioOutput.elapsedUSecs() == qint64(0)),"elapsedUSecs() not zero on creation");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.elapsedUSecs() == qint64(0)), "elapsedUSecs() not zero on creation");
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    audioOutput.start(audioFile.data());
+    audioSink.start(audioFile.get());
     // Check that QAudioSink immediately transitions to ActiveState
     QTRY_VERIFY2((stateSignal.size() == 1),
                  QStringLiteral("didn't emit signal on start(), got %1 signals instead")
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::ActiveState), "didn't transition to ActiveState after start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError),
+    QVERIFY2((audioSink.state() == QAudio::ActiveState),
+             "didn't transition to ActiveState after start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
              "error state is not equal to QAudio::NoError after start()");
 
     stateSignal.clear();
     // Wait for half of clip to play
     QTest::qWait(500);
 
-    audioOutput.suspend();
+    audioSink.suspend();
     QTest::qWait(100);
 
     QTRY_VERIFY2(
@@ -505,18 +746,24 @@ void tst_QAudioSink::pullSuspendResume()
                     .arg(dumpStateSignalSpy(stateSignal))
                     .toUtf8()
                     .constData());
-    QVERIFY2((audioOutput.state() == QAudio::SuspendedState), "didn't transition to SuspendedState after suspend()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after suspend()");
+    QVERIFY2((audioSink.state() == QAudio::SuspendedState),
+             "didn't transition to SuspendedState after suspend()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after suspend()");
     stateSignal.clear();
 
     // Check that only 'elapsed', and not 'processed' increases while suspended
-    qint64 elapsedUs = audioOutput.elapsedUSecs();
-    qint64 processedUs = audioOutput.processedUSecs();
+    qint64 elapsedUs = audioSink.elapsedUSecs();
+    qint64 processedUs = audioSink.processedUSecs();
     QTest::qWait(100);
-    QVERIFY(audioOutput.elapsedUSecs() > elapsedUs);
-    QVERIFY(audioOutput.processedUSecs() == processedUs);
+    QVERIFY(audioSink.elapsedUSecs() > elapsedUs);
+    if (isPulseAudioBackend())
+        // suspend is asynchronous on pulseaudio, so we give it 50ms to stop
+        QCOMPARE_LE(audioSink.processedUSecs(), processedUs + 50'000);
+    else
+        QCOMPARE(audioSink.processedUSecs(), processedUs);
 
-    audioOutput.resume();
+    audioSink.resume();
 
     // Check that QAudioSink immediately transitions to ActiveState
     QVERIFY2((stateSignal.size() == 1),
@@ -524,79 +771,70 @@ void tst_QAudioSink::pullSuspendResume()
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::ActiveState), "didn't transition to ActiveState after resume()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after resume()");
+    QVERIFY2((audioSink.state() == QAudio::ActiveState),
+             "didn't transition to ActiveState after resume()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after resume()");
     stateSignal.clear();
 
     // Wait until playback finishes
     QTRY_VERIFY2(audioFile->atEnd(), "didn't play to EOF");
     QTRY_VERIFY(stateSignal.size() > 0);
     QTRY_COMPARE(qvariant_cast<QAudio::State>(stateSignal.last().at(0)), QAudio::IdleState);
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transitions to IdleState when at EOF");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transitions to IdleState when at EOF");
     stateSignal.clear();
 
-    QTRY_COMPARE(audioOutput.processedUSecs(), 1000000);
+    QTRY_COMPARE(audioSink.processedUSecs(), 1000000);
 
-    audioOutput.stop();
+    audioSink.stop();
     QTest::qWait(40);
     QVERIFY2((stateSignal.size() == 1),
              QStringLiteral("didn't emit StoppedState signal after stop(), got %1 signals instead")
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "didn't transitions to StoppedState after stop()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "didn't transitions to StoppedState after stop()");
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
-    QVERIFY2((audioOutput.elapsedUSecs() == (qint64)0), "elapsedUSecs() not equal to zero in StoppedState");
+    QVERIFY2((audioSink.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
+    QVERIFY2((audioSink.elapsedUSecs() == (qint64)0),
+             "elapsedUSecs() not equal to zero in StoppedState");
 
     audioFile->close();
 }
 
 void tst_QAudioSink::pullResumeFromUnderrun()
 {
-    class AudioPullSource : public QIODevice
-    {
-    public:
-        qint64 readData(char *data, qint64 len) override {
-            qint64 read = qMin(len, available);
-            available -= read;
-            memset(data, 0, read);
-            return read;
-        }
-        qint64 writeData(const char *, qint64) override { return 0; }
-        bool isSequential() const override { return true; }
+    QAudioDevice output = QMediaDevices::defaultAudioOutput();
+    if (output.isNull())
+        QSKIP("no audio output detected");
 
-        qint64 bytesAvailable() const override { return available; }
-        bool atEnd() const override { return signalEnd && available == 0; }
+    QAudioFormat format = output.preferredFormat();
+    const int chunkSize = format.bytesForFrames(128);
 
-        qint64 available = 0;
-        bool signalEnd = false;
-    };
-
-    constexpr int chunkSize = 128;
-
-    QAudioFormat format;
-    format.setChannelCount(1);
-    format.setSampleFormat(QAudioFormat::UInt8);
-    format.setSampleRate(8000);
-
-    AudioPullSource audioSource;
-    QAudioSink audioOutput(format, this);
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    AudioPullSource audioSource(false, format);
+    QAudioSink audioSink(format, this);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     audioSource.open(QIODeviceBase::ReadOnly);
     audioSource.available = chunkSize;
-    QCOMPARE(audioOutput.state(), QAudio::StoppedState);
-    audioOutput.start(&audioSource);
+    QCOMPARE(audioSink.state(), QAudio::StoppedState);
+    audioSink.start(&audioSource);
 
     QTRY_COMPARE(stateSignal.size(), 1);
-    QCOMPARE(audioOutput.state(), QAudio::ActiveState);
-    QCOMPARE(audioOutput.error(), QAudio::NoError);
+    QCOMPARE(audioSink.state(), QAudio::ActiveState);
+    QCOMPARE(audioSink.error(), QAudio::NoError);
     stateSignal.clear();
 
     QTRY_COMPARE(stateSignal.size(), 1);
-    QCOMPARE(audioOutput.state(), QAudio::IdleState);
-    QCOMPARE(audioOutput.error(), QAudio::UnderrunError);
+    QCOMPARE(audioSink.state(), QAudio::IdleState);
+    QT_WARNING_PUSH;
+    QT_WARNING_DISABLE_DEPRECATED;
+    if (underrunIsAnError())
+        QCOMPARE(audioSink.error(), QAudio::UnderrunError);
+    QT_WARNING_POP;
+
     stateSignal.clear();
 
     QTest::qWait(300);
@@ -610,13 +848,14 @@ void tst_QAudioSink::pullResumeFromUnderrun()
     QCOMPARE(stateSignal.at(0).front().value<QAudio::State>(), QAudio::ActiveState);
     QCOMPARE(stateSignal.at(1).front().value<QAudio::State>(), QAudio::IdleState);
 
-    QCOMPARE(audioOutput.error(), QAudio::NoError);
-    QCOMPARE(audioOutput.state(), QAudio::IdleState);
+    QCOMPARE(audioSink.error(), QAudio::NoError);
+    QCOMPARE(audioSink.state(), QAudio::IdleState);
 
     // we played two chunks, sample rate is per second
-    const int expectedUSecs = (double(chunkSize) / double(format.sampleRate()))
-                            * 2 * 1000 * 1000;
-    QTRY_COMPARE(audioOutput.processedUSecs(), expectedUSecs);
+    const int expectedUSecs =
+            (double(chunkSize) / double(format.sampleRate()) / format.bytesPerFrame()) * 2 * 1000
+            * 1000;
+    QTRY_COMPARE(audioSink.processedUSecs(), expectedUSecs);
 }
 
 void tst_QAudioSink::push()
@@ -624,22 +863,25 @@ void tst_QAudioSink::push()
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
 
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setVolume(0.1f);
+    audioSink.setVolume(0.1f);
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
-    QVERIFY2((audioOutput.elapsedUSecs() == qint64(0)),"elapsedUSecs() not zero on creation");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.elapsedUSecs() == qint64(0)), "elapsedUSecs() not zero on creation");
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    QIODevice* feed = audioOutput.start();
+    QIODevice *feed = audioSink.start();
+    QSignalSpy dataWrittenToDeviceSpy(feed, &QIODevice::bytesWritten);
 
     // Check that QAudioSink immediately transitions to IdleState
     QTRY_VERIFY2((stateSignal.size() == 1),
@@ -647,14 +889,17 @@ void tst_QAudioSink::push()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transition to IdleState after start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after start()");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transition to IdleState after start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after start()");
     stateSignal.clear();
 
     // Check that 'elapsed' increases
     QTest::qWait(40);
-    QVERIFY2((audioOutput.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
-    QVERIFY2((audioOutput.processedUSecs() == qint64(0)), "processedUSecs() is not zero after start()");
+    QVERIFY2((audioSink.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
+    QVERIFY2((audioSink.processedUSecs() == qint64(0)),
+             "processedUSecs() is not zero after start()");
 
     qint64 written = 0;
 
@@ -665,39 +910,53 @@ void tst_QAudioSink::push()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-        QVERIFY2((audioOutput.state() == QAudio::ActiveState),
+        QVERIFY2((audioSink.state() == QAudio::ActiveState),
                  "didn't transition to ActiveState after receiving data");
-        QVERIFY2((audioOutput.error() == QAudio::NoError),
+        QVERIFY2((audioSink.error() == QAudio::NoError),
                  "error state is not equal to QAudio::NoError after receiving data");
         stateSignal.clear();
     };
 
-    pushDataToAudioSink(audioOutput, *audioFile, *feed, written, wavDataSize(*audioFile), checker,
+    pushDataToAudioSink(audioSink, *audioFile, *feed, written, wavDataSize(*audioFile), checker,
                         true);
 
     // Wait until playback finishes
     QVERIFY2(audioFile->atEnd(), "didn't play to EOF");
-    QTRY_VERIFY(audioOutput.state() == QAudio::IdleState);
+    QTRY_VERIFY(audioSink.state() == QAudio::IdleState);
     QTRY_VERIFY(stateSignal.size() > 0);
     QTRY_COMPARE(qvariant_cast<QAudio::State>(stateSignal.last().at(0)), QAudio::IdleState);
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transitions to IdleState when at EOF");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transitions to IdleState when at EOF");
     stateSignal.clear();
 
-    QTRY_COMPARE(audioOutput.processedUSecs(), 1000000);
+    QTRY_COMPARE(audioSink.processedUSecs(), 1000000);
 
-    audioOutput.stop();
+    audioSink.stop();
     QTest::qWait(40);
     QVERIFY2((stateSignal.size() == 1),
              QStringLiteral("didn't emit StoppedState signal after stop(), got %1 signals instead")
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "didn't transitions to StoppedState after stop()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "didn't transitions to StoppedState after stop()");
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
-    QVERIFY2((audioOutput.elapsedUSecs() == (qint64)0), "elapsedUSecs() not equal to zero in StoppedState");
+    QVERIFY2((audioSink.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
+    QVERIFY2((audioSink.elapsedUSecs() == (qint64)0),
+             "elapsedUSecs() not equal to zero in StoppedState");
 
-    audioFile->close();
+    if (isWindows || isMacOS || isPulseAudioBackend() || isPipewireBackend()) {
+        QVERIFY(!dataWrittenToDeviceSpy.empty());
+        auto allBytesWritten = [&] {
+            qint64 total = 0;
+            for (const auto &params : dataWrittenToDeviceSpy) {
+                total += params.at(0).toLongLong();
+            }
+            return total;
+        }();
+
+        QCOMPARE_EQ(allBytesWritten, audioFile->pos() - QWaveDecoder::headerLength());
+    }
 }
 
 void tst_QAudioSink::pushSuspendResume()
@@ -705,22 +964,24 @@ void tst_QAudioSink::pushSuspendResume()
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
 
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setVolume(0.1f);
+    audioSink.setVolume(0.1f);
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
-    QVERIFY2((audioOutput.elapsedUSecs() == qint64(0)),"elapsedUSecs() not zero on creation");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.elapsedUSecs() == qint64(0)), "elapsedUSecs() not zero on creation");
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    QIODevice* feed = audioOutput.start();
+    QIODevice *feed = audioSink.start();
 
     // Check that QAudioSink immediately transitions to IdleState
     QTRY_VERIFY2((stateSignal.size() == 1),
@@ -728,14 +989,17 @@ void tst_QAudioSink::pushSuspendResume()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transition to IdleState after start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after start()");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transition to IdleState after start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after start()");
     stateSignal.clear();
 
     // Check that 'elapsed' increases
     QTest::qWait(40);
-    QVERIFY2((audioOutput.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
-    QVERIFY2((audioOutput.processedUSecs() == qint64(0)), "processedUSecs() is not zero after start()");
+    QVERIFY2((audioSink.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
+    QVERIFY2((audioSink.processedUSecs() == qint64(0)),
+             "processedUSecs() is not zero after start()");
 
     auto firstHalfChecker = [&]() {
         QVERIFY2((stateSignal.size() == 1),
@@ -743,21 +1007,21 @@ void tst_QAudioSink::pushSuspendResume()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-        QVERIFY2((audioOutput.state() == QAudio::ActiveState),
+        QVERIFY2((audioSink.state() == QAudio::ActiveState),
                  "didn't transition to ActiveState after receiving data");
-        QVERIFY2((audioOutput.error() == QAudio::NoError),
+        QVERIFY2((audioSink.error() == QAudio::NoError),
                  "error state is not equal to QAudio::NoError after receiving data");
     };
 
     qint64 written = 0;
     // Play half of the clip
-    pushDataToAudioSink(audioOutput, *audioFile, *feed, written, wavDataSize(*audioFile) / 2,
+    pushDataToAudioSink(audioSink, *audioFile, *feed, written, wavDataSize(*audioFile) / 2,
                         firstHalfChecker, true);
 
     stateSignal.clear();
 
-    const auto suspendedInState = audioOutput.state();
-    audioOutput.suspend();
+    const auto suspendedInState = audioSink.state();
+    audioSink.suspend();
 
     QTRY_VERIFY2(
             (stateSignal.size() == 1),
@@ -766,18 +1030,24 @@ void tst_QAudioSink::pushSuspendResume()
                     .arg(dumpStateSignalSpy(stateSignal))
                     .toUtf8()
                     .constData());
-    QVERIFY2((audioOutput.state() == QAudio::SuspendedState), "didn't transition to SuspendedState after suspend()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after suspend()");
+    QVERIFY2((audioSink.state() == QAudio::SuspendedState),
+             "didn't transition to SuspendedState after suspend()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after suspend()");
     stateSignal.clear();
 
     // Check that only 'elapsed', and not 'processed' increases while suspended
-    qint64 elapsedUs = audioOutput.elapsedUSecs();
-    qint64 processedUs = audioOutput.processedUSecs();
+    const qint64 elapsedUs = audioSink.elapsedUSecs();
+    const qint64 processedUs = audioSink.processedUSecs();
     QTest::qWait(100);
-    QVERIFY(audioOutput.elapsedUSecs() > elapsedUs);
-    QVERIFY(audioOutput.processedUSecs() == processedUs);
+    QCOMPARE_GT(audioSink.elapsedUSecs(), elapsedUs);
+    if (isPulseAudioBackend())
+        // suspend is asynchronous on pulseaudio, so we give it 50ms to stop
+        QCOMPARE_LE(audioSink.processedUSecs(), processedUs + 50'000);
+    else
+        QCOMPARE(audioSink.processedUSecs(), processedUs);
 
-    audioOutput.resume();
+    audioSink.resume();
 
     // Give backends running in separate threads a chance to resume
     // but not too much or the rest of the file may be processed
@@ -789,41 +1059,46 @@ void tst_QAudioSink::pushSuspendResume()
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == suspendedInState), "resume() didn't transition to state before suspend()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after resume()");
+    QVERIFY2((audioSink.state() == suspendedInState),
+             "resume() didn't transition to state before suspend()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after resume()");
     stateSignal.clear();
 
     // Play rest of the clip
 
     auto restChecker = [&]() {
-        QVERIFY2((audioOutput.state() == QAudio::ActiveState),
+        QVERIFY2((audioSink.state() == QAudio::ActiveState),
                  "didn't transition to ActiveState after writing audio data");
     };
 
-    pushDataToAudioSink(audioOutput, *audioFile, *feed, written, -1, restChecker);
+    pushDataToAudioSink(audioSink, *audioFile, *feed, written, -1, restChecker);
 
-    QVERIFY(audioOutput.state() != QAudio::IdleState);
+    QVERIFY(audioSink.state() != QAudio::IdleState);
     stateSignal.clear();
 
     QVERIFY2(audioFile->atEnd(), "didn't play to EOF");
     QTRY_VERIFY(stateSignal.size() > 0);
     QTRY_COMPARE(qvariant_cast<QAudio::State>(stateSignal.last().at(0)), QAudio::IdleState);
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transitions to IdleState when at EOF");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transitions to IdleState when at EOF");
     stateSignal.clear();
 
-    QTRY_COMPARE(audioOutput.processedUSecs(), 1000000);
+    QTRY_COMPARE(audioSink.processedUSecs(), 1000000);
 
-    audioOutput.stop();
+    audioSink.stop();
     QTest::qWait(40);
     QVERIFY2((stateSignal.size() == 1),
              QStringLiteral("didn't emit StoppedState signal after stop(), got %1 signals instead")
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "didn't transitions to StoppedState after stop()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "didn't transitions to StoppedState after stop()");
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
-    QVERIFY2((audioOutput.elapsedUSecs() == (qint64)0), "elapsedUSecs() not equal to zero in StoppedState");
+    QVERIFY2((audioSink.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
+    QVERIFY2((audioSink.elapsedUSecs() == (qint64)0),
+             "elapsedUSecs() not equal to zero in StoppedState");
 
     audioFile->close();
 }
@@ -833,39 +1108,39 @@ void tst_QAudioSink::pushResetResume()
     auto audioFile = audioFiles.at(0);
     auto audioFormat = testFormats.at(0);
 
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setBufferSize(8192);
-    audioOutput.setVolume(0.1f);
+    audioSink.setBufferSize(8192);
+    audioSink.setVolume(0.1f);
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    QPointer<QIODevice> feed = audioOutput.start();
+    QPointer<QIODevice> feed = audioSink.start();
 
     QTest::qWait(20);
 
-    auto buffer = audioFile->read(audioOutput.bytesFree());
+    auto buffer = audioFile->read(audioSink.bytesFree());
     feed->write(buffer);
 
     QTest::qWait(20);
-    QTRY_COMPARE(audioOutput.state(), QAudio::ActiveState);
+    QTRY_COMPARE(audioSink.state(), QAudio::ActiveState);
 
-    audioOutput.reset();
-    QCOMPARE(audioOutput.state(), QAudio::StoppedState);
-    QCOMPARE(audioOutput.error(), QAudio::NoError);
+    audioSink.reset();
+    QCOMPARE(audioSink.state(), QAudio::StoppedState);
+    QCOMPARE(audioSink.error(), QAudio::NoError);
 
-    const auto processedUSecs = audioOutput.processedUSecs();
+    const auto processedUSecs = audioSink.processedUSecs();
 
-    audioOutput.resume();
+    audioSink.resume();
     QTest::qWait(40);
 
     // Nothing changed if resume after reset
-    QCOMPARE(audioOutput.state(), QAudio::StoppedState);
-    QCOMPARE(audioOutput.error(), QAudio::NoError);
+    QCOMPARE(audioSink.state(), QAudio::StoppedState);
+    QCOMPARE(audioSink.error(), QAudio::NoError);
 
-    QCOMPARE(audioOutput.processedUSecs(), processedUSecs);
+    QCOMPARE(audioSink.processedUSecs(), processedUSecs);
 }
 
 void tst_QAudioSink::pushUnderrun()
@@ -873,22 +1148,24 @@ void tst_QAudioSink::pushUnderrun()
     QFETCH(FilePtr, audioFile);
     QFETCH(QAudioFormat, audioFormat);
 
-    QAudioSink audioOutput(audioFormat, this);
+    QAudioSink audioSink(audioFormat, this);
 
-    audioOutput.setVolume(0.1f);
+    audioSink.setVolume(0.1f);
 
-    QSignalSpy stateSignal(&audioOutput, &QAudioSink::stateChanged);
+    QSignalSpy stateSignal(&audioSink, &QAudioSink::stateChanged);
 
     // Check that we are in the default state before calling start
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "state() was not set to StoppedState before start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() was not set to QAudio::NoError before start()");
-    QVERIFY2((audioOutput.elapsedUSecs() == qint64(0)),"elapsedUSecs() not zero on creation");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "state() was not set to StoppedState before start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error() was not set to QAudio::NoError before start()");
+    QVERIFY2((audioSink.elapsedUSecs() == qint64(0)), "elapsedUSecs() not zero on creation");
 
     audioFile->close();
-    audioFile->open(QIODevice::ReadOnly);
+    QVERIFY(audioFile->open(QIODevice::ReadOnly));
     audioFile->seek(QWaveDecoder::headerLength());
 
-    QIODevice* feed = audioOutput.start();
+    QIODevice *feed = audioSink.start();
 
     // Check that QAudioSink immediately transitions to IdleState
     QTRY_VERIFY2((stateSignal.size() == 1),
@@ -896,14 +1173,16 @@ void tst_QAudioSink::pushUnderrun()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transition to IdleState after start()");
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error state is not equal to QAudio::NoError after start()");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transition to IdleState after start()");
+    QVERIFY2((audioSink.error() == QAudio::NoError),
+             "error state is not equal to QAudio::NoError after start()");
     stateSignal.clear();
 
     // Check that 'elapsed' increases
     QTest::qWait(40);
-    QVERIFY2((audioOutput.elapsedUSecs() > 0), "elapsedUSecs() is still zero after start()");
-    QVERIFY2((audioOutput.processedUSecs() == qint64(0)), "processedUSecs() is not zero after start()");
+    QCOMPARE_GT(audioSink.elapsedUSecs(), 0);
+    QCOMPARE(audioSink.processedUSecs(), qint64(0));
 
     qint64 written = 0;
 
@@ -915,13 +1194,13 @@ void tst_QAudioSink::pushUnderrun()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-        QVERIFY2((audioOutput.state() == QAudio::ActiveState),
+        QVERIFY2((audioSink.state() == QAudio::ActiveState),
                  "didn't transition to ActiveState after receiving data");
-        QVERIFY2((audioOutput.error() == QAudio::NoError),
+        QVERIFY2((audioSink.error() == QAudio::NoError),
                  "error state is not equal to QAudio::NoError after receiving data");
     };
 
-    pushDataToAudioSink(audioOutput, *audioFile, *feed, written, wavDataSize(*audioFile) / 2,
+    pushDataToAudioSink(audioSink, *audioFile, *feed, written, wavDataSize(*audioFile) / 2,
                         firstHalfChecker, true);
 
     stateSignal.clear();
@@ -934,8 +1213,14 @@ void tst_QAudioSink::pushUnderrun()
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transition to IdleState, no data");
-    QVERIFY2((audioOutput.error() == QAudio::UnderrunError), "error state is not equal to QAudio::UnderrunError, no data");
+    QVERIFY2((audioSink.state() == QAudio::IdleState), "didn't transition to IdleState, no data");
+    if (underrunIsAnError()) {
+        QT_WARNING_PUSH;
+        QT_WARNING_DISABLE_DEPRECATED;
+        QVERIFY2((audioSink.error() == QAudio::UnderrunError),
+                 "error state is not equal to QAudio::UnderrunError, no data");
+        QT_WARNING_POP;
+    }
     stateSignal.clear();
 
     // Play rest of the clip
@@ -945,12 +1230,12 @@ void tst_QAudioSink::pushUnderrun()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-        QVERIFY2((audioOutput.state() == QAudio::ActiveState),
+        QVERIFY2((audioSink.state() == QAudio::ActiveState),
                  "didn't transition to ActiveState after receiving data");
-        QVERIFY2((audioOutput.error() == QAudio::NoError),
+        QVERIFY2((audioSink.error() == QAudio::NoError),
                  "error state is not equal to QAudio::NoError after receiving data");
     };
-    pushDataToAudioSink(audioOutput, *audioFile, *feed, written, -1, restChecker, true);
+    pushDataToAudioSink(audioSink, *audioFile, *feed, written, -1, restChecker, true);
 
     stateSignal.clear();
 
@@ -961,22 +1246,24 @@ void tst_QAudioSink::pushUnderrun()
                          .arg(dumpStateSignalSpy(stateSignal))
                          .toUtf8()
                          .constData());
-    QVERIFY2((audioOutput.state() == QAudio::IdleState), "didn't transitions to IdleState when at EOF");
+    QVERIFY2((audioSink.state() == QAudio::IdleState),
+             "didn't transitions to IdleState when at EOF");
     stateSignal.clear();
 
-    QTRY_COMPARE(audioOutput.processedUSecs(), 1000000);
+    QTRY_COMPARE(audioSink.processedUSecs(), 1000000);
 
-    audioOutput.stop();
+    audioSink.stop();
     QTest::qWait(40);
     QVERIFY2((stateSignal.size() == 1),
              QStringLiteral("didn't emit StoppedState signal after stop(), got %1 signals instead")
                      .arg(dumpStateSignalSpy(stateSignal))
                      .toUtf8()
                      .constData());
-    QVERIFY2((audioOutput.state() == QAudio::StoppedState), "didn't transitions to StoppedState after stop()");
+    QVERIFY2((audioSink.state() == QAudio::StoppedState),
+             "didn't transitions to StoppedState after stop()");
 
-    QVERIFY2((audioOutput.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
-    QVERIFY2((audioOutput.elapsedUSecs() == (qint64)0), "elapsedUSecs() not equal to zero in StoppedState");
+    QVERIFY2((audioSink.error() == QAudio::NoError), "error() is not QAudio::NoError after stop()");
+    QCOMPARE(audioSink.elapsedUSecs(), 0);
 
     audioFile->close();
 }
@@ -994,13 +1281,355 @@ void tst_QAudioSink::volume()
 {
     QFETCH(float, actualFloat);
     QFETCH(int, expectedInt);
-    QAudioSink audioOutput(audioDevice.preferredFormat(), this);
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
 
-    audioOutput.setVolume(actualFloat);
-    QTRY_VERIFY(qRound(audioOutput.volume()*10.0f) == expectedInt);
+    audioSink.setVolume(actualFloat);
+    QTRY_VERIFY(qRound(audioSink.volume() * 10.0f) == expectedInt);
     // Wait a while to see if this changes
     QTest::qWait(500);
-    QTRY_VERIFY(qRound(audioOutput.volume()*10.0f) == expectedInt);
+    QTRY_VERIFY(qRound(audioSink.volume() * 10.0f) == expectedInt);
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_getReturnsMinusOneWhenUnset()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), -1);
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_setValidValues()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    QCOMPARE(audioSink.state(), QAudio::StoppedState);
+
+    // Test valid power-of-2 values
+    const auto validValues = { 32, 64, 128, 256, 512, 1024, 2048, 4096 };
+    for (int value : validValues) {
+        audioSink.setNativePeriodFrameCount(value);
+        QCOMPARE(audioSink.nativePeriodFrameCount(), value);
+    }
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_getReturnsSet()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), -1);
+
+    audioSink.setNativePeriodFrameCount(256);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), 256);
+
+    audioSink.setNativePeriodFrameCount(1024);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), 1024);
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_setInvalidValues()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+
+    // Test invalid values - these should not be set
+    const auto invalidValues = { 33, 31, 4093, 8192 };
+    for (int value : invalidValues) {
+        QTest::ignoreMessage(QtWarningMsg,
+                             QRegularExpression("QAudioSink::setNativePeriodFrameCount:.*"));
+        audioSink.setNativePeriodFrameCount(value);
+        QCOMPARE(audioSink.nativePeriodFrameCount(), -1);
+    }
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_rejectWhenNotStopped()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+
+    // Try to set when in active state - should be rejected
+    audioSink.start();
+    QTRY_VERIFY(audioSink.state() != QAudio::StoppedState);
+
+    QTest::ignoreMessage(QtWarningMsg,
+                         QRegularExpression("QAudioSink::setNativePeriodFrameCount:.*can only be set when stopped.*"));
+    audioSink.setNativePeriodFrameCount(256);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), -1);
+
+    audioSink.stop();
+}
+
+void tst_QAudioSink::nativePeriodFrameCount_setMinusOneUnsets()
+{
+    QAudioSink audioSink(audioDevice.preferredFormat(), this);
+
+    audioSink.setNativePeriodFrameCount(512);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), 512);
+
+    audioSink.setNativePeriodFrameCount(-1);
+    QCOMPARE(audioSink.nativePeriodFrameCount(), -1);
+}
+
+void tst_QAudioSink::stop_stopsAudioSink_whenInvokedUponFirstStateChange_data()
+{
+    QTest::addColumn<AudioSinkInitializer>("initializer");
+
+    AudioSinkInitializer initPullMode = [](QAudioSink &sink) {
+        QIODevice *device = new MockIODevice(&sink);
+        device->open(QIODevice::ReadOnly);
+        sink.start(device);
+        return sink.error() == QtAudio::NoError;
+    };
+
+    AudioSinkInitializer initPushMode = [](QAudioSink &sink) {
+        QIODevice *device = sink.start();
+        return device && sink.error() == QtAudio::NoError;
+    };
+
+    QTest::newRow("pullMode") << initPullMode;
+    QTest::newRow("pushMode") << initPushMode;
+}
+
+void tst_QAudioSink::stop_stopsAudioSink_whenInvokedUponFirstStateChange()
+{
+    if (isAndroid)
+        // Revisit after migrating to AAudio
+        QSKIP("'initializer(audioSink)' returned FALSE");
+
+    QFETCH(const AudioSinkInitializer, initializer);
+
+    QAudioSink audioSink(testFormats.at(0));
+
+    auto stop = [&audioSink]() {
+        audioSink.stop();
+        QCOMPARE(audioSink.state(), QtAudio::State::StoppedState);
+    };
+
+    connect(&audioSink, &QAudioSink::stateChanged, this, stop, Qt::SingleShotConnection);
+
+    QVERIFY(initializer(audioSink));
+
+    QTRY_COMPARE(audioSink.state(), QtAudio::State::StoppedState);
+}
+
+void tst_QAudioSink::stateChanged_stringBasedConnect()
+{
+    const QAudioDevice defaultAudioOutputDevice = QMediaDevices::defaultAudioOutput();
+
+    QAudioSink audiosink(defaultAudioOutputDevice);
+
+    QSignalSpy stateSignal(&audiosink, SIGNAL(stateChanged(QAudio::State)));
+
+    audiosink.start();
+    QTRY_VERIFY(!stateSignal.empty());
+}
+
+void tst_QAudioSink::callbackAPI()
+{
+#if QT_CONFIG(thread)
+    using namespace std::chrono_literals;
+
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(QAudioFormat::SampleFormat::Float);
+
+    QAudioSink audioSink(audioDevice, format);
+    QPlatformAudioSink *platformSink = QPlatformAudioSink::get(audioSink);
+    if (!platformSink->hasCallbackAPI())
+        QSKIP("Callback API not supported by this backend");
+
+    QSemaphore sync;
+
+    audioSink.start([&](QSpan<float> outputBuffer) {
+        QCOMPARE_GT(outputBuffer.size(), 0);
+        sync.release();
+    });
+    QCOMPARE(audioSink.error(), QAudio::Error::NoError);
+
+    QTRY_COMPARE(audioSink.state(), QAudio::State::ActiveState);
+
+    // ensure that we won't end up "idle", that does not make sense with the callback API
+    QTest::qWait(2s);
+    QCOMPARE_NE(audioSink.state(), QAudio::State::IdleState);
+
+    bool callbackExecuted = sync.try_acquire_for(1s);
+    QVERIFY(callbackExecuted);
+#else
+    QSKIP("Threading not configured");
+#endif
+}
+
+void tst_QAudioSink::callbackAPI_availabilityCheck()
+{
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(QAudioFormat::SampleFormat::Float);
+
+    QAudioSink audioSink(audioDevice, format);
+    QPlatformAudioSink *platformSink = QPlatformAudioSink::get(audioSink);
+    QCOMPARE(QPlatformMediaIntegration::instance()->audioDevices()->hasCallbackApi(),
+             platformSink->hasCallbackAPI());
+}
+
+void tst_QAudioSink::callbackAPI_startFailsWithWrongType()
+{
+    using namespace std::chrono_literals;
+
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(QAudioFormat::SampleFormat::Float);
+
+    QAudioSink audioSink(audioDevice, format);
+    QPlatformAudioSink *platformSink = QPlatformAudioSink::get(audioSink);
+    if (!platformSink->hasCallbackAPI())
+        QSKIP("Callback API not supported by this backend");
+
+    audioSink.start([&](QSpan<int32_t>) {
+    });
+    QCOMPARE(audioSink.error(), QAudio::Error::OpenError);
+}
+
+void tst_QAudioSink::callbackAPI_startWithMoveOnlyFunctor()
+{
+#if QT_CONFIG(thread)
+    using namespace std::chrono_literals;
+
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(QAudioFormat::SampleFormat::Float);
+
+    QAudioSink audioSink(audioDevice, format);
+    QPlatformAudioSink *platformSink = QPlatformAudioSink::get(audioSink);
+    if (!platformSink->hasCallbackAPI())
+        QSKIP("Callback API not supported by this backend");
+
+    QSemaphore sync;
+
+    audioSink.start([&, dummy = std::make_unique<int>(1)](QSpan<float> outputBuffer) {
+        QCOMPARE_GT(outputBuffer.size(), 0);
+        sync.release();
+    });
+    QCOMPARE(audioSink.error(), QAudio::Error::NoError);
+
+    bool callbackExecuted = sync.try_acquire_for(1s);
+    QVERIFY(callbackExecuted);
+#else
+    QSKIP("Threading not configured or move-only functions not available");
+#endif
+}
+
+void tst_QAudioSink::callbackAPI_suspendPreventsCallbackInvocation_data()
+{
+    QTest::addColumn<bool>("suspendImmediately");
+    QTest::newRow("suspend immediately after start") << true;
+    QTest::newRow("suspend after ActiveState") << false;
+}
+
+
+void tst_QAudioSink::callbackAPI_suspendPreventsCallbackInvocation()
+{
+#if QT_CONFIG(thread)
+    using namespace std::chrono_literals;
+    QFETCH(bool, suspendImmediately);
+
+    QAudioFormat format = audioDevice.preferredFormat();
+    format.setSampleFormat(QAudioFormat::SampleFormat::Float);
+
+    QAudioSink audioSink(audioDevice, format);
+    QPlatformAudioSink *platformSink = QPlatformAudioSink::get(audioSink);
+    if (!platformSink->hasCallbackAPI())
+        QSKIP("Callback API not supported by this backend");
+
+    // Atomic counter to track callback invocations
+    std::atomic<int> callbackCount = 0;
+
+    audioSink.start([&](QSpan<float> outputBuffer) {
+        QCOMPARE_GT(outputBuffer.size(), 0);
+        callbackCount++;
+    });
+    QCOMPARE(audioSink.error(), QAudio::Error::NoError);
+
+    if (suspendImmediately) {
+        // Suspend immediately without waiting for ActiveState
+        audioSink.suspend();
+    } else {
+        // Wait for the sink to become active
+        QTRY_COMPARE(audioSink.state(), QAudio::State::ActiveState);
+        audioSink.suspend();
+    }
+
+    QTRY_COMPARE(audioSink.state(), QAudio::State::SuspendedState);
+
+    // Reset counter and wait to verify no callbacks occur while suspended
+    callbackCount = 0;
+    QTest::qWait(500ms);
+
+    // Verify that the callback was called at most a single time
+    QCOMPARE_LE(callbackCount.load(), 1);
+
+    audioSink.stop();
+#else
+    QSKIP("Threading not configured");
+#endif
+}
+
+void tst_QAudioSink::multipleSinks()
+{
+    QFETCH(QAudioDevice, firstSinkDevice);
+    QFETCH(QAudioDevice, secondSinkDevice);
+
+    auto format1 = firstSinkDevice.preferredFormat();
+    auto sink1 = std::make_unique<QAudioSink>(firstSinkDevice, format1, this);
+    AudioPullSource source1(true, format1);
+    source1.open(QIODeviceBase::ReadOnly);
+
+    auto format2 = secondSinkDevice.preferredFormat();
+    auto sink2 = std::make_unique<QAudioSink>(secondSinkDevice, format2, this);
+    AudioPullSource source2(true, format2);
+    source2.open(QIODeviceBase::ReadOnly);
+
+    sink1->start(&source1);
+    QTRY_COMPARE_GT(sink1->processedUSecs(), 0);
+
+    sink2->start(&source2);
+    QTRY_COMPARE_GT(sink2->processedUSecs(), 0);
+
+    QTest::qWait(1000);
+
+    // Check both sinks are active
+    QCOMPARE(sink1->state(), QAudio::State::ActiveState);
+    QCOMPARE(sink2->state(), QAudio::State::ActiveState);
+    QCOMPARE(sink1->error(), QAudio::Error::NoError);
+    QCOMPARE(sink2->error(), QAudio::Error::NoError);
+
+    // Stop sink1
+    sink1->stop();
+
+    // Check sink2 is still active after sink1 stopped
+    QTest::qWait(1000);
+    QCOMPARE(sink2->state(), QAudio::State::ActiveState);
+    QCOMPARE(sink2->error(), QAudio::Error::NoError);
+}
+
+void tst_QAudioSink::start_afterStopAndReset()
+{
+    QFETCH(QAudioDevice, firstSinkDevice);
+    QFETCH(QAudioDevice, secondSinkDevice);
+
+    auto format1 = firstSinkDevice.preferredFormat();
+    auto sink = std::make_unique<QAudioSink>(firstSinkDevice, format1, this);
+    AudioPullSource source1(true, format1);
+    source1.open(QIODeviceBase::ReadOnly);
+    sink->start(&source1);
+    QTRY_COMPARE_GT(sink->processedUSecs(), 0);
+
+    sink->stop();
+    // Reset immediately
+    auto format2 = secondSinkDevice.preferredFormat();
+    sink.reset(new QAudioSink(secondSinkDevice, format2, this));
+    AudioPullSource source2(true);
+    source2.open(QIODeviceBase::ReadOnly);
+    sink->start(&source2);
+    QTRY_COMPARE_GT(sink->processedUSecs(), 0);
+}
+
+void tst_QAudioSink::destroy_while_running()
+{
+    AudioPullSource src;
+    src.open(QIODeviceBase::ReadOnly);
+    src.available = 44100 * 10; // 10 seconds of audio
+
+    QAudioSink sink(audioDevice, audioDevice.preferredFormat());
+
+    sink.start(&src);
 }
 
 QTEST_MAIN(tst_QAudioSink)

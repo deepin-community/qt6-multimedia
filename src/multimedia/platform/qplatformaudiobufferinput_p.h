@@ -4,8 +4,8 @@
 #ifndef QPLATFORMAUDIOBUFFERINPUT_P_H
 #define QPLATFORMAUDIOBUFFERINPUT_P_H
 
-#include "qaudioformat.h"
-#include "qaudiobuffer.h"
+#include <QtMultimedia/qaudiobuffer.h>
+#include <QtMultimedia/qaudioformat.h>
 
 //
 //  W A R N I N G
@@ -22,14 +22,14 @@ QT_BEGIN_NAMESPACE
 
 class QMediaInputEncoderInterface;
 
-class Q_MULTIMEDIA_EXPORT QPlatformAudioBufferInputBase : public QObject
+class Q_MULTIMEDIA_EXPORT QAudioBufferSource : public QObject
 {
     Q_OBJECT
 Q_SIGNALS:
     void newAudioBuffer(const QAudioBuffer &buffer);
 };
 
-class Q_MULTIMEDIA_EXPORT QPlatformAudioBufferInput : public QPlatformAudioBufferInputBase
+class Q_MULTIMEDIA_EXPORT QPlatformAudioBufferInput : public QAudioBufferSource
 {
     Q_OBJECT
 public:
@@ -38,9 +38,9 @@ public:
     const QAudioFormat &audioFormat() const { return m_format; }
 
     QMediaInputEncoderInterface *encoderInterface() const { return m_encoderInterface; }
-    void setEncoderInterface(QMediaInputEncoderInterface *interface)
+    void setEncoderInterface(QMediaInputEncoderInterface *encoderInterface)
     {
-        m_encoderInterface = interface;
+        m_encoderInterface = encoderInterface;
     }
 
 Q_SIGNALS:

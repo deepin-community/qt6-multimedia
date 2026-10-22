@@ -15,32 +15,46 @@
 // We mean it.
 //
 
-#include "qffmpegdefs_p.h"
-#include "qtmultimediaglobal.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegdefs_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegcodec_p.h>
+#include <QtMultimedia/qtmultimediaglobal.h>
 
-#include <functional>
+#include <QtCore/qxpfunctional.h>
+
 #include <optional>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 
-bool findAndOpenAVDecoder(AVCodecID codecId,
-                          const std::function<AVScore(const AVCodec *)> &scoresGetter,
-                          const std::function<bool(const AVCodec *)> &codecOpener);
+enum class CodecRole : uint8_t {
+    Encoders,
+    Decoders,
+};
 
-bool findAndOpenAVEncoder(AVCodecID codecId,
-                          const std::function<AVScore(const AVCodec *)> &scoresGetter,
-                          const std::function<bool(const AVCodec *)> &codecOpener);
+struct CodecScoreRecord
+{
+    Codec codec;
+    AVScore score;
+};
 
-const AVCodec *findAVDecoder(AVCodecID codecId,
-                             const std::optional<PixelOrSampleFormat> &format = {});
+std::vector<CodecScoreRecord>
+findAndScoreCodecs(CodecRole, AVCodecID,
+                   const qxp::function_ref<AVScore(const Codec &)> &scoreFunction);
 
-const AVCodec *findAVEncoder(AVCodecID codecId,
-                             const std::optional<PixelOrSampleFormat> &format = {});
+// note: Sorted by score descending, so the first element is the best match.
+inline std::vector<CodecScoreRecord>
+findAndScoreEncoders(AVCodecID codecId,
+                     const qxp::function_ref<AVScore(const Codec &)> &scoreFunction)
+{
+    return findAndScoreCodecs(CodecRole::Encoders, codecId, scoreFunction);
+}
 
-const AVCodec *findAVEncoder(AVCodecID codecId,
-                             const std::function<AVScore(const AVCodec *)> &scoresGetter);
+std::optional<Codec> findAVDecoder(AVCodecID codecId,
+                                   const std::optional<PixelOrSampleFormat> &format = {});
+
+std::optional<Codec> findAVEncoder(AVCodecID codecId,
+                                   const std::optional<PixelOrSampleFormat> &format = {});
 
 } // namespace QFFmpeg
 

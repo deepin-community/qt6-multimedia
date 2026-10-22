@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qaudiobufferoutput_p.h"
-#include "qmediaplayer.h"
-#include "qaudiobuffer.h"
+
+#include <QtMultimedia/qaudiobuffer.h>
+#include <QtMultimedia/qmediaplayer.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -18,7 +19,10 @@ QT_BEGIN_NAMESPACE
 
     QAudioBufferOutput can be set to QMediaPlayer in order to receive audio buffers
     decoded by the media player. The received audio data can be used for any
-    processing or visualization.
+    processing or visualization. An audio level meter implementation can be seen
+    in the widget based \l{Media Player Example}.
+
+    QAudioBufferOutput is only supported with the FFmpeg backend.
 
     \sa QMediaPlayer, QMediaPlayer::setAudioBufferOutput, QAudioBuffer
 */

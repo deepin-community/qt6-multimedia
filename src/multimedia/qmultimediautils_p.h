@@ -16,15 +16,19 @@
 //
 
 #include <QtMultimedia/qtmultimediaglobal.h>
-#include <QtMultimedia/qtvideo.h>
-#include <QtMultimedia/private/qmaybe_p.h>
+#include <QtMultimedia/private/qvideotransformation_p.h>
+#include <QtCore/private/qexpected_p.h>
 #include <QtCore/qsize.h>
 #include <QtCore/qurl.h>
 #include <QtGui/rhi/qrhi.h>
 
+#include <memory>
+
 QT_BEGIN_NAMESPACE
 
 class QRhiSwapChain;
+class QFile;
+class QTemporaryFile;
 class QVideoFrame;
 class QVideoFrameFormat;
 
@@ -48,7 +52,7 @@ inline QSize qRotatedFrameSize(QSize size, QtVideo::Rotation rotation)
 
 Q_MULTIMEDIA_EXPORT QSize qRotatedFramePresentationSize(const QVideoFrame &frame);
 
-Q_MULTIMEDIA_EXPORT QUrl qMediaFromUserInput(QUrl fileName);
+Q_MULTIMEDIA_EXPORT QUrl qMediaFromUserInput(const QUrl &fileName);
 
 Q_MULTIMEDIA_EXPORT bool qIsAutoHdrEnabled();
 
@@ -59,28 +63,73 @@ Q_MULTIMEDIA_EXPORT bool
 qShouldUpdateSwapChainFormat(QRhiSwapChain *swapChain,
                              QRhiSwapChain::Format requiredSwapChainFormat);
 
-struct NormalizedVideoTransformation
-{
-    QtVideo::Rotation rotation = QtVideo::Rotation::None;
-    int rotationIndex = 0;
-    bool xMirrorredAfterRotation = false;
-};
-
-inline bool operator==(const NormalizedVideoTransformation &lhs,
-                       const NormalizedVideoTransformation &rhs)
-{
-    return lhs.rotation == rhs.rotation
-            && lhs.xMirrorredAfterRotation == rhs.xMirrorredAfterRotation;
-}
-
-Q_MULTIMEDIA_EXPORT NormalizedVideoTransformation
+Q_MULTIMEDIA_EXPORT VideoTransformation
 qNormalizedSurfaceTransformation(const QVideoFrameFormat &format);
 
-Q_MULTIMEDIA_EXPORT NormalizedVideoTransformation
-qNormalizedFrameTransformation(const QVideoFrame &frame, int additionalRotaton = 0);
+Q_MULTIMEDIA_EXPORT VideoTransformation qNormalizedFrameTransformation(
+        const QVideoFrame &frame, VideoTransformation videoOutputTransformation = {});
 
 Q_MULTIMEDIA_EXPORT QtVideo::Rotation
 qVideoRotationFromDegrees(int clockwiseDegrees);
+
+inline VideoTransformation qNormalizedFrameTransformation(const QVideoFrame &frame,
+                                                          int videoOutputRotation)
+{
+    return qNormalizedFrameTransformation(
+            frame, VideoTransformation{ qVideoRotationFromDegrees(videoOutputRotation) });
+}
+
+/* The function get mirroring and rotation from the specified QTransform.
+ *
+ * Matrix translation is not taken into consideration.
+ * Matrix negative scaling is interpreted as mirroring.
+ * Absolute X and Y scale values are not taken into consideration as
+ * QVideoFrame and QVideoFrameFormat don't support scaling transformations.
+ *
+ * Sheared matrixes are not supported,
+ * as shearing can make the transformation ambiguous
+ * (the same matrix can be reached by different angle,scaleX,scaleY,shearV,shearH).
+ *
+ * If the given matrix is invalid, or the scale sign is ambiguous,
+ * the function returns an empty optional value.
+ */
+Q_MULTIMEDIA_EXPORT VideoTransformationOpt qVideoTransformationFromMatrix(const QTransform &matrix);
+
+namespace QtMultimediaPrivate {
+
+template <class... Ts>
+struct qOverloadedVisitor : Ts...
+{
+    using Ts::operator()...;
+    constexpr qOverloadedVisitor(Ts... args) : Ts(std::move(args))... {}
+};
+template <class... Ts>
+qOverloadedVisitor(Ts...) -> qOverloadedVisitor<Ts...>;
+
+struct DeleteLaterDeleter
+{
+    void operator()(QObject *ptr) const
+    {
+        if (ptr)
+            ptr->deleteLater();
+    }
+};
+
+template <typename T, typename... Args>
+std::shared_ptr<T> makeSharedDeleteLater(Args &&...args)
+{
+    return std::shared_ptr<T>(new T(std::forward<Args>(args)...), DeleteLaterDeleter());
+}
+
+struct QrcMedia
+{
+    QUrl url;
+    std::unique_ptr<QTemporaryFile> file;
+};
+
+q23::expected<QrcMedia, QString> qCopyQrcToTemporaryFile(QFile &, const QUrl &);
+
+} // namespace QtMultimediaPrivate
 
 QT_END_NAMESPACE
 

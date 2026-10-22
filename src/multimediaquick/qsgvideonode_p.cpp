@@ -2,13 +2,21 @@
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only
 
 #include "qsgvideonode_p.h"
-#include <QtQuick/qsgmaterial.h>
-#include "qsgvideotexture_p.h"
+
+#include <QtMultimedia/private/qhwvideobuffer_p.h>
+#include <QtMultimedia/private/qvideoframetexturepool_p.h>
 #include <QtMultimedia/private/qvideotexturehelper_p.h>
-#include <private/qsginternaltextnode_p.h>
-#include <private/qquickitem_p.h>
-#include <private/qquickvideooutput_p.h>
-#include <private/qhwvideobuffer_p.h>
+
+#include <QtMultimediaQuick/private/qsgvideotexture_p.h>
+#include <QtMultimediaQuick/private/qquickvideooutput_p.h>
+
+#include <QtQuick/qsgmaterial.h>
+#include <QtQuick/private/qquickitem_p.h>
+#include <QtQuick/private/qsginternaltextnode_p.h>
+
+#if QT_CONFIG(opengles2)
+#include <QtGui/private/qshaderdescription_p.h>
+#endif
 
 QT_BEGIN_NAMESPACE
 
@@ -42,16 +50,22 @@ class QSGVideoMaterialRhiShader : public QSGMaterialShader
 public:
     QSGVideoMaterialRhiShader(const QVideoFrameFormat &videoFormat,
                               const QRhiSwapChain::Format surfaceFormat,
-                              const QRhiSwapChainHdrInfo &hdrInfo)
+                              const QRhiSwapChainHdrInfo &hdrInfo,
+                              QRhi *rhi)
         : m_videoFormat(videoFormat)
         , m_surfaceFormat(surfaceFormat)
         , m_hdrInfo(hdrInfo)
     {
         setShaderFileName(VertexStage, QVideoTextureHelper::vertexShaderFileName(m_videoFormat));
-        setShaderFileName(
-                FragmentStage,
-                QVideoTextureHelper::fragmentShaderFileName(m_videoFormat, m_surfaceFormat));
+        if (QVideoTextureHelper::forceGlTextureExternalOesIsSet()
+            && rhi && rhi->backend() == QRhi::OpenGLES2)
+            setupExternalOESShader();
+        else
+            setShaderFileName(FragmentStage, QVideoTextureHelper::fragmentShaderFileName(
+                                                     m_videoFormat, rhi, m_surfaceFormat));
     }
+
+    void setupExternalOESShader();
 
     bool updateUniformData(RenderState &state, QSGMaterial *newMaterial,
                            QSGMaterial *oldMaterial) override;
@@ -65,10 +79,61 @@ protected:
     QRhiSwapChainHdrInfo m_hdrInfo;
 };
 
+void QSGVideoMaterialRhiShader::setupExternalOESShader()
+{
+#if QT_CONFIG(opengles2)
+    qDebug() << "QSGVideoMaterialRhiShader: Setting up external OES shader for OpenGLES2";
+
+    using namespace Qt::Literals::StringLiterals;
+    QByteArray fragmentShader = R"(
+        #extension GL_OES_EGL_image_external : require
+        precision highp float;
+        varying vec2 texCoord;
+        uniform samplerExternalOES tex0;
+        void main()
+        {
+            gl_FragColor = texture2D(tex0, texCoord);
+        }
+      )"_ba;
+
+    QShaderDescription desc;
+    QShaderDescriptionPrivate *descData = QShaderDescriptionPrivate::get(&desc);
+
+    QShaderDescription::InOutVariable texCoordInput;
+    texCoordInput.name = "texCoord";
+    texCoordInput.type = QShaderDescription::Vec2;
+    texCoordInput.location = 0;
+
+    descData->inVars = { texCoordInput };
+
+    QShaderDescription::InOutVariable fragColorOutput;
+    fragColorOutput.name = "gl_FragColor";
+    fragColorOutput.type = QShaderDescription::Vec4;
+    fragColorOutput.location = 0;
+
+    descData->outVars = { fragColorOutput };
+
+    QShaderDescription::InOutVariable samplerTex0;
+    samplerTex0.name = "tex0";
+    samplerTex0.type = QShaderDescription::SamplerExternalOES;
+    samplerTex0.binding = 1;
+
+    descData->combinedImageSamplers = { samplerTex0 };
+
+    QShader shaderPack;
+    shaderPack.setStage(QShader::FragmentStage);
+    shaderPack.setDescription(desc);
+    shaderPack.setShader(QShaderKey(QShader::GlslShader, QShaderVersion(100, QShaderVersion::GlslEs)),
+                         QShaderCode(fragmentShader));
+
+    setShader(FragmentStage, shaderPack);
+#endif
+}
+
 class QSGVideoMaterial : public QSGMaterial
 {
 public:
-    QSGVideoMaterial(const QVideoFrameFormat &videoFormat);
+    QSGVideoMaterial(const QVideoFrameFormat &videoFormat, QRhi *rhi);
 
     [[nodiscard]] QSGMaterialType *type() const override {
         static constexpr int NFormats = QRhiSwapChain::HDRExtendedDisplayP3Linear + 1;
@@ -77,7 +142,7 @@ public:
     }
 
     [[nodiscard]] QSGMaterialShader *createShader(QSGRendererInterface::RenderMode) const override {
-        return new QSGVideoMaterialRhiShader(m_videoFormat, m_surfaceFormat, m_hdrInfo);
+        return new QSGVideoMaterialRhiShader(m_videoFormat, m_surfaceFormat, m_hdrInfo, m_rhi);
     }
 
     int compare(const QSGMaterial *other) const override {
@@ -94,12 +159,7 @@ public:
 
     void updateBlending() {
         // ### respect video formats with Alpha
-        setFlag(Blending, !qFuzzyCompare(m_opacity, float(1.0)));
-    }
-
-    void setCurrentFrame(const QVideoFrame &frame) {
-        m_currentFrame = frame;
-        m_texturesDirty = true;
+        setFlag(Blending, !QtPrivate::fuzzyCompare(m_opacity, float(1.0)));
     }
 
     void setSurfaceFormat(const QRhiSwapChain::Format surfaceFormat)
@@ -117,34 +177,25 @@ public:
     QVideoFrameFormat m_videoFormat;
     QRhiSwapChain::Format m_surfaceFormat = QRhiSwapChain::SDR;
     float m_opacity = 1.0f;
-    QRhiSwapChainHdrInfo m_hdrInfo;
+    QRhiSwapChainHdrInfo m_hdrInfo{};
 
-    bool m_texturesDirty = false;
-    QVideoFrame m_currentFrame;
-
-    enum { NVideoFrameSlots = 4 };
-    QVideoFrame m_videoFrameSlots[NVideoFrameSlots];
+    QVideoFrameTexturePoolPtr m_texturePool = std::make_shared<QVideoFrameTexturePool>();
     std::array<QSGVideoTexture, 3> m_textures;
-    std::unique_ptr<QVideoFrameTextures> m_videoFrameTextures;
+
+    QRhi *m_rhi;
 };
 
 void QSGVideoMaterial::updateTextures(QRhi *rhi, QRhiResourceUpdateBatch *resourceUpdates)
 {
-    if (!m_texturesDirty)
+    if (!m_texturePool->texturesDirty())
         return;
 
-    // keep the video frames alive until we know that they are not needed anymore
-    Q_ASSERT(NVideoFrameSlots >= rhi->resourceLimit(QRhi::FramesInFlight));
-    m_videoFrameSlots[rhi->currentFrameSlot()] = m_currentFrame;
-
-    // update and upload all textures
-    m_videoFrameTextures = QVideoTextureHelper::createTextures(m_currentFrame, rhi, resourceUpdates, std::move(m_videoFrameTextures));
-    if (!m_videoFrameTextures)
+    QVideoFrameTextures *textures = m_texturePool->updateTextures(*rhi, *resourceUpdates);
+    if (!textures)
         return;
 
     for (int plane = 0; plane < 3; ++plane)
-        m_textures[plane].setRhiTexture(m_videoFrameTextures->texture(plane));
-    m_texturesDirty = false;
+        m_textures[plane].setRhiTexture(textures->texture(plane));
 }
 
 
@@ -176,8 +227,9 @@ bool QSGVideoMaterialRhiShader::updateUniformData(RenderState &state, QSGMateria
             maxNits = m_hdrInfo.limits.luminanceInNits.maxLuminance;
     }
 
-    QVideoTextureHelper::updateUniformData(state.uniformData(), m_videoFormat,
-        m->m_currentFrame, state.combinedMatrix(), state.opacity(), maxNits);
+    QVideoTextureHelper::updateUniformData(state.uniformData(), m->m_rhi, m_videoFormat,
+                                           m->m_texturePool->currentFrame(), state.combinedMatrix(),
+                                           state.opacity(), maxNits);
 
     return true;
 }
@@ -194,18 +246,20 @@ void QSGVideoMaterialRhiShader::updateSampledImage(RenderState &state, int bindi
     *texture = &m->m_textures[binding - 1];
 }
 
-QSGVideoMaterial::QSGVideoMaterial(const QVideoFrameFormat &videoFormat)
-    : m_videoFormat(videoFormat)
+QSGVideoMaterial::QSGVideoMaterial(const QVideoFrameFormat &videoFormat, QRhi *rhi)
+    : m_videoFormat(videoFormat),
+    m_rhi(rhi)
 {
     setFlag(Blending, false);
 }
 
-QSGVideoNode::QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &videoFormat)
+QSGVideoNode::QSGVideoNode(QQuickVideoOutput *parent, const QVideoFrameFormat &videoFormat,
+                           QRhi *rhi)
     : m_parent(parent), m_videoFormat(videoFormat)
 {
     setFlag(QSGNode::OwnsMaterial);
     setFlag(QSGNode::OwnsGeometry);
-    m_material = new QSGVideoMaterial(videoFormat);
+    m_material = new QSGVideoMaterial(videoFormat, rhi);
     setMaterial(m_material);
 }
 
@@ -216,7 +270,7 @@ QSGVideoNode::~QSGVideoNode()
 
 void QSGVideoNode::setCurrentFrame(const QVideoFrame &frame)
 {
-    m_material->setCurrentFrame(frame);
+    texturePool()->setCurrentFrame(frame);
     markDirty(DirtyMaterial);
     updateSubtitle(frame);
 }
@@ -239,7 +293,7 @@ void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
     if (subtitleFrameSize.isEmpty())
         return;
 
-    subtitleFrameSize = qRotatedFrameSize(subtitleFrameSize, m_orientation);
+    subtitleFrameSize = qRotatedFrameSize(subtitleFrameSize, m_videoOutputTransformation.rotation);
 
     if (!m_subtitleLayout.update(subtitleFrameSize, frame.subtitleText()))
         return;
@@ -255,8 +309,9 @@ void QSGVideoNode::updateSubtitle(const QVideoFrame &frame)
     m_subtitleTextNode->setColor(Qt::white);
     QColor bgColor = Qt::black;
     bgColor.setAlpha(128);
-    m_subtitleTextNode->addRectangleNode(m_subtitleLayout.bounds, bgColor);
-    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(), &m_subtitleLayout.layout);
+    m_subtitleTextNode->addRectangleNode(m_subtitleLayout.bounds, bgColor, nullptr);
+    m_subtitleTextNode->addTextLayout(m_subtitleLayout.layout.position(),
+                                      &m_subtitleLayout.layout, nullptr);
     appendChildNode(m_subtitleTextNode);
     setSubtitleGeometry();
 }
@@ -267,41 +322,46 @@ void QSGVideoNode::setSubtitleGeometry()
         return;
 
     if (m_material)
-        updateSubtitle(m_material->m_currentFrame);
+        updateSubtitle(texturePool()->currentFrame());
 
-    float rotate = -1.f * m_orientation;
+    float rotate = -1.f * qToUnderlying(m_videoOutputTransformation.rotation);
     float yTranslate = 0;
     float xTranslate = 0;
-    if (m_orientation == 90) {
+    if (m_videoOutputTransformation.rotation == QtVideo::Rotation::Clockwise90) {
         yTranslate = m_rect.height();
-    } else if (m_orientation == 180) {
+    } else if (m_videoOutputTransformation.rotation == QtVideo::Rotation::Clockwise180) {
         yTranslate = m_rect.height();
         xTranslate = m_rect.width();
-    } else if (m_orientation == 270) {
+    } else if (m_videoOutputTransformation.rotation == QtVideo::Rotation::Clockwise270) {
         xTranslate = m_rect.width();
     }
 
     QMatrix4x4 transform;
     transform.translate(m_rect.x() + xTranslate, m_rect.y() + yTranslate);
     transform.rotate(rotate, 0, 0, 1);
+    // TODO: Investigate if we should we mirror subtitles
+    // if (m_videoOutputTransformation.mirroredHorizontallyAfterRotation)
+    //    transform.scale(-1.f, 1.f);
 
     m_subtitleTextNode->setMatrix(transform);
     m_subtitleTextNode->markDirty(DirtyGeometry);
 }
 
-/* Update the vertices and texture coordinates.  Orientation must be in {0,90,180,270} */
-void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &textureRect, int orientation)
+/* Update the vertices and texture coordinates.*/
+void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &textureRect,
+                                           VideoTransformation videoOutputTransformation)
 {
-    const NormalizedVideoTransformation currentFrameTransformation =
-            qNormalizedFrameTransformation(m_material ? m_material->m_currentFrame : QVideoFrame{});
+    const VideoTransformation currentFrameTransformation = qNormalizedFrameTransformation(
+            m_material ? texturePool()->currentFrame() : QVideoFrame{}, videoOutputTransformation);
 
-    if (rect == m_rect && textureRect == m_textureRect && orientation == m_orientation
+    if (rect == m_rect && textureRect == m_textureRect
+        && videoOutputTransformation == m_videoOutputTransformation
         && currentFrameTransformation == m_frameTransformation)
         return;
 
     m_rect = rect;
     m_textureRect = textureRect;
-    m_orientation = orientation;
+    m_videoOutputTransformation = videoOutputTransformation;
     m_frameTransformation = currentFrameTransformation;
 
     QSGGeometry *g = geometry();
@@ -357,7 +417,7 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
         break;
     }
 
-    if (m_frameTransformation.xMirrorredAfterRotation) {
+    if (m_frameTransformation.mirroredHorizontallyAfterRotation) {
         qSwapTex(v + 0, v + 2);
         qSwapTex(v + 1, v + 3);
     }
@@ -368,6 +428,11 @@ void QSGVideoNode::setTexturedRectGeometry(const QRectF &rect, const QRectF &tex
     markDirty(DirtyGeometry);
 
     setSubtitleGeometry();
+}
+
+const QVideoFrameTexturePoolPtr &QSGVideoNode::texturePool() const
+{
+    return m_material->m_texturePool;
 }
 
 QT_END_NAMESPACE

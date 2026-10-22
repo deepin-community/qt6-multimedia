@@ -3,26 +3,24 @@
 
 
 #include "avfmediaencoder_p.h"
-#include "avfcamerarenderer_p.h"
-#include "avfcamerasession_p.h"
-#include "avfcamera_p.h"
-#include "avfcameraservice_p.h"
-#include "avfcameradebug_p.h"
-#include "avfcamerautility_p.h"
-#include "qaudiodevice.h"
 
-#include "qmediadevices.h"
-#include "private/qmediastoragelocation_p.h"
-#include "private/qmediarecorder_p.h"
-#include "qdarwinformatsinfo_p.h"
-#include "private/qplatformaudiooutput_p.h"
-#include <private/qplatformaudioinput_p.h>
+#include <camera/avfcamera_p.h>
+#include <camera/avfcamerarenderer_p.h>
+#include <camera/avfcameraservice_p.h>
+#include <camera/avfcamerasession_p.h>
+#include <qdarwinformatsinfo_p.h>
 
-#include <QtCore/qmath.h>
+#include <QtMultimedia/qaudiodevice.h>
+#include <QtMultimedia/qmediadevices.h>
+#include <QtMultimedia/private/qavfcameradebug_p.h>
+#include <QtMultimedia/private/qavfcamerautility_p.h>
+#include <QtMultimedia/private/qcoreaudioutils_p.h>
+#include <QtMultimedia/private/qmediarecorder_p.h>
+#include <QtMultimedia/private/qmediastoragelocation_p.h>
+#include <QtMultimedia/private/qplatformaudioinput_p.h>
+#include <QtMultimedia/private/qplatformaudiooutput_p.h>
 #include <QtCore/qdebug.h>
-#include <QtCore/qmimetype.h>
-
-#include <private/qcoreaudioutils_p.h>
+#include <QtCore/qmath.h>
 
 QT_USE_NAMESPACE
 
@@ -53,7 +51,7 @@ bool qt_file_exists(NSURL *fileURL)
     return false;
 }
 
-}
+} // namespace
 
 AVFMediaEncoder::AVFMediaEncoder(QMediaRecorder *parent)
     : QObject(parent)
@@ -108,7 +106,7 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
 
     // Codec
     int codecId = QDarwinFormatInfo::audioFormatForCodec(encoderSettings.mediaFormat().audioCodec());
-    [settings setObject:[NSNumber numberWithInt:codecId] forKey:AVFormatIDKey];
+    settings[AVFormatIDKey] = @(codecId);
 
     // Setting AVEncoderQualityKey is not allowed when format ID is alac or lpcm
     if (codecId != kAudioFormatAppleLossless && codecId != kAudioFormatLinearPCM
@@ -133,7 +131,7 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
             quality = AVAudioQualityMedium;
             break;
         }
-        [settings setObject:[NSNumber numberWithInt:quality] forKey:AVEncoderAudioQualityKey];
+        settings[AVEncoderAudioQualityKey] = @(quality);
     } else {
         // BitRate
         bool isBitRateSupported = false;
@@ -148,8 +146,7 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
                 }
             }
             if (isBitRateSupported)
-                [settings setObject:[NSNumber numberWithInt:encoderSettings.audioBitRate()]
-                                              forKey:AVEncoderBitRateKey];
+                settings[AVEncoderBitRateKey] = @(encoderSettings.audioBitRate());
         }
     }
 
@@ -167,7 +164,7 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
     }
     if (!isSampleRateSupported)
         sampleRate = 44100;
-    [settings setObject:[NSNumber numberWithInt:sampleRate] forKey:AVSampleRateKey];
+    settings[AVSampleRateKey] = @(sampleRate);
 
     // Channels
     int channelCount = encoderSettings.audioChannelCount();
@@ -195,44 +192,46 @@ static NSDictionary *avfAudioSettings(const QMediaEncoderSettings &encoderSettin
             auto channelLayoutTags = qt_supported_channel_layout_tags_for_format(codecId, channelCount);
             if (channelLayoutTags.size()) {
                 channelLayout.mChannelLayoutTag = channelLayoutTags.first();
-                [settings setObject:[NSData dataWithBytes: &channelLayout length: sizeof(channelLayout)] forKey:AVChannelLayoutKey];
+                settings[AVChannelLayoutKey] = [NSData dataWithBytes:&channelLayout length:sizeof(channelLayout)];
             } else {
                 isChannelCountSupported = false;
             }
         }
 
         if (isChannelCountSupported)
-            [settings setObject:[NSNumber numberWithInt:channelCount] forKey:AVNumberOfChannelsKey];
+            settings[AVNumberOfChannelsKey] = @(channelCount);
     }
 
     if (!isChannelCountSupported) {
         // fallback to providing channel layout if channel count is not specified or supported
         UInt32 size = 0;
         if (format.isValid()) {
-            auto layout = CoreAudioUtils::toAudioChannelLayout(format, &size);
+            auto layout = QCoreAudioUtils::toAudioChannelLayout(format, &size);
             UInt32 layoutSize = offsetof(AudioChannelLayout, mChannelDescriptions)
                     + layout->mNumberChannelDescriptions * sizeof(AudioChannelDescription);
-            [settings setObject:[NSData dataWithBytes:layout.get() length:layoutSize] forKey:AVChannelLayoutKey];
+            settings[AVChannelLayoutKey] = [NSData dataWithBytes:layout.get() length:layoutSize];
         } else {
             // finally default to setting channel count to 1
-            [settings setObject:[NSNumber numberWithInt:1] forKey:AVNumberOfChannelsKey];
+            settings[AVNumberOfChannelsKey] = @(1);
         }
     }
 
     if (codecId == kAudioFormatAppleLossless)
-        [settings setObject:[NSNumber numberWithInt:24] forKey:AVEncoderBitDepthHintKey];
+        settings[AVEncoderBitDepthHintKey] = @(24);
 
     if (codecId == kAudioFormatLinearPCM) {
-        [settings setObject:[NSNumber numberWithInt:16] forKey:AVLinearPCMBitDepthKey];
-        [settings setObject:[NSNumber numberWithInt:NO] forKey:AVLinearPCMIsBigEndianKey];
-        [settings setObject:[NSNumber numberWithInt:NO] forKey:AVLinearPCMIsFloatKey];
-        [settings setObject:[NSNumber numberWithInt:NO] forKey:AVLinearPCMIsNonInterleaved];
+        settings[AVLinearPCMBitDepthKey] = @(16);
+        settings[AVLinearPCMIsBigEndianKey] = @NO;
+        settings[AVLinearPCMIsFloatKey] = @NO;
+        settings[AVLinearPCMIsNonInterleaved] = @NO;
     }
 
     return settings;
 }
 
-NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings, AVCaptureDevice *device, AVCaptureConnection *connection, QSize nativeSize)
+static NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings,
+                                      AVCaptureDevice *device, AVCaptureConnection *connection,
+                                      QSize nativeSize)
 {
     if (!device)
         return nil;
@@ -337,8 +336,8 @@ NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings, AVCapture
         h = nativeSize.height();
         encoderSettings.setVideoResolution(nativeSize);
     }
-    [videoSettings setObject:[NSNumber numberWithInt:w] forKey:AVVideoWidthKey];
-    [videoSettings setObject:[NSNumber numberWithInt:h] forKey:AVVideoHeightKey];
+    videoSettings[AVVideoWidthKey] = @(w);
+    videoSettings[AVVideoHeightKey] = @(h);
 
     // -- FPS
 
@@ -388,11 +387,11 @@ NSDictionary *avfVideoSettings(QMediaEncoderSettings &encoderSettings, AVCapture
     }
 
     if (bitrate != -1)
-        [codecProperties setObject:[NSNumber numberWithInt:bitrate] forKey:AVVideoAverageBitRateKey];
+        codecProperties[AVVideoAverageBitRateKey] = @(bitrate);
     if (quality != -1.f)
-        [codecProperties setObject:[NSNumber numberWithFloat:quality] forKey:AVVideoQualityKey];
+        codecProperties[AVVideoQualityKey] = @(quality);
 
-    [videoSettings setObject:codecProperties forKey:AVVideoCompressionPropertiesKey];
+    videoSettings[AVVideoCompressionPropertiesKey] = codecProperties;
 
     return videoSettings;
 }
@@ -485,6 +484,11 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
         return;
     }
 
+    // This is necessary to explicitly recreate m_audioInput inside AVFCameraSession.
+    // Which in turn is necessary for the case when the microphone was disconnected
+    // after stopping recording and reconnected.
+    m_service->session()->updateAudioInput();
+
     m_service->session()->setActive(true);
     const bool audioOnly = settings.videoCodec() == QMediaFormat::VideoCodec::Unspecified;
     AVCaptureSession *session = m_service->session()->captureSession();
@@ -501,9 +505,9 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
 
     const QString path(outputLocation().scheme() == QLatin1String("file") ?
                            outputLocation().path() : outputLocation().toString());
-    const QUrl fileURL(QUrl::fromLocalFile(QMediaStorageLocation::generateFileName(path,
-                    audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation,
-                    settings.mimeType().preferredSuffix())));
+    const QUrl fileURL(QUrl::fromLocalFile(QMediaStorageLocation::generateFileName(
+            path, audioOnly ? QStandardPaths::MusicLocation : QStandardPaths::MoviesLocation,
+            settings.preferredSuffix())));
 
     NSURL *nsFileURL = fileURL.toNSURL();
     if (!nsFileURL) {
@@ -543,8 +547,8 @@ void AVFMediaEncoder::record(QMediaEncoderSettings &settings)
 
         m_state = QMediaRecorder::RecordingState;
 
-        Q_EMIT actualLocationChanged(fileURL);
-        Q_EMIT stateChanged(m_state);
+        actualLocationChanged(fileURL);
+        stateChanged(m_state);
 
         // Apple recommends to call startRunning and do all
         // setup on a special queue, and that's what we had
@@ -628,7 +632,7 @@ void AVFMediaEncoder::assetWriterFinished()
 
     m_state = QMediaRecorder::StoppedState;
     if (m_state != lastState)
-        Q_EMIT stateChanged(m_state);
+        stateChanged(m_state);
 }
 
 void AVFMediaEncoder::assetWriterError(QString err)

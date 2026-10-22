@@ -12,9 +12,10 @@
 #include <QtMultimedia/qmediatimerange.h>
 #include <QtTest/qtestcase.h>
 
+#include <private/mediabackendutils_p.h>
+
 #include <optional>
 
-QT_USE_NAMESPACE
 
 /*!
  * Helper class that simplifies testing the state of
@@ -122,6 +123,10 @@ struct MediaPlayerState
         state.error = QMediaPlayer::NoError;
         state.isAvailable = true;
         state.metaData = QMediaMetaData{};
+
+        if (isGStreamerPlatform())
+            state.bufferProgress = std::nullopt;
+
         return state;
     }
 

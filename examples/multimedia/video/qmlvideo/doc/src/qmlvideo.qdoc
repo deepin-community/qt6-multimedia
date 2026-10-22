@@ -22,6 +22,7 @@ which creates a dummy overlay item (just a semi-transparent \l{Rectangle}),
 which moves across the \l{VideoOutput} item.
 
 \image qmlvideo-overlay.jpg
+       {Video player with semi-transparent overlay}
 
 \include examples-run.qdocinc
 
@@ -41,6 +42,7 @@ The \c Main.qml file creates a UI which includes the following items:
 \endlist
 
 \image qmlvideo-menu.jpg
+       {Scene selection panel showing list of video and camera mode scenes}
 
 Each scene in the flickable list is implemented in its own QML file - for
 example the video-basic scene (which just displays a static \l{VideoOutput}
@@ -93,7 +95,40 @@ instance, the embedded \c Content item creates either a
 
 \section1 Calculating and Displaying QML Painting Rate
 
-\input multimedia/doc/src/examples/video-qml-paint-rate.qdocinc
+The QML painting rate is calculated by the FrequencyMonitor class, which
+turns a stream of events (received via the notify() slot), into an
+instantaneous and an averaged frequency:
+
+\quotefromfile video/qmlvideo/frequencymonitor/frequencymonitor.h
+\skipto class FrequencyMonitor : public QObject
+\printuntil QML_ELEMENT
+\skipto Q_PROPERTY(qreal instantaneousFrequency
+\printuntil averageFrequencyChanged)
+\dots
+\skipto public slots
+\printuntil notify();
+\skipto };
+\printline };
+
+The FrequencyMonitor class is exposed to QML by adding the macro QML_ELEMENT to the
+class declaration as shown above, and its data is displayed by defining a QML item
+called FrequencyItem, like this:
+
+\quotefromfile video/qmlvideo/frequencymonitor/FrequencyItem.qml
+\skipto import frequencymonitor
+\printuntil id: root
+\dots
+\skipto function notify
+\printuntil id: monitor
+\skipto onAverageFrequencyChanged
+\printuntil {
+\skipto averageFrequencyText
+\printuntil /^\}/
+
+The result looks like this:
+
+\image video-qml-paint-rate.png
+       {62.5 Hz instantaneous frequency and 53.15 Hz average frequency}
 
 All that remains is to connect the afterRendering() signal of the QQuickView
 object to a JavaScript function, which will eventually call

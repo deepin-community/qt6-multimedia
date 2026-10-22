@@ -3,15 +3,17 @@
 
 #include "qwindowsmediaencoder_p.h"
 
-#include "qwindowsmediadevicesession_p.h"
-#include "qwindowsmediacapture_p.h"
-#include "mfmetadata_p.h"
-#include <QtCore/QUrl>
-#include <QtCore/QMimeType>
+#include <common/mfmetadata_p.h>
+#include <mediacapture/qwindowsmediacapture_p.h>
+#include <mediacapture/qwindowsmediadevicesession_p.h>
+
+#include <QtMultimedia/private/qmediarecorder_p.h>
+#include <QtMultimedia/private/qmediastoragelocation_p.h>
+#include <QtCore/qurl.h>
+#include <QtCore/private/qcomptr_p.h>
+
 #include <mferror.h>
 #include <shobjidl.h>
-#include <private/qmediastoragelocation_p.h>
-#include <private/qmediarecorder_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -23,7 +25,7 @@ QWindowsMediaEncoder::QWindowsMediaEncoder(QMediaRecorder *parent)
 
 bool QWindowsMediaEncoder::isLocationWritable(const QUrl &location) const
 {
-    return location.scheme() == QLatin1String("file") || location.scheme().isEmpty();
+    return location.scheme() == u"file" || location.scheme().isEmpty();
 }
 
 QMediaRecorder::RecorderState QWindowsMediaEncoder::state() const
@@ -59,10 +61,10 @@ void QWindowsMediaEncoder::record(QMediaEncoderSettings &settings)
     }
 
     const auto audioOnly = settings.videoCodec() == QMediaFormat::VideoCodec::Unspecified;
-    m_fileName = QMediaStorageLocation::generateFileName(outputLocation().toLocalFile(), audioOnly
-                                                    ? QStandardPaths::MusicLocation
-                                                    : QStandardPaths::MoviesLocation,
-                                                    settings.mimeType().preferredSuffix());
+    m_fileName = QMediaStorageLocation::generateFileName(outputLocation().toLocalFile(),
+                                                         audioOnly ? QStandardPaths::MusicLocation
+                                                                   : QStandardPaths::MoviesLocation,
+                                                         settings.preferredSuffix());
 
     QMediaRecorder::Error ec = m_mediaDeviceSession->startRecording(settings, m_fileName, audioOnly);
     if (ec == QMediaRecorder::NoError) {
@@ -156,15 +158,14 @@ void QWindowsMediaEncoder::saveMetadata()
 
         const QString nativeFileName = QDir::toNativeSeparators(m_fileName);
 
-        IPropertyStore *store = nullptr;
+        ComPtr<IPropertyStore> store;
 
         if (SUCCEEDED(SHGetPropertyStoreFromParsingName(reinterpret_cast<LPCWSTR>(nativeFileName.utf16()),
                                                         nullptr, GPS_READWRITE, IID_PPV_ARGS(&store)))) {
 
-            MFMetaData::toNative(m_metaData, store);
+            MFMetaData::toNative(m_metaData, store.Get());
 
             store->Commit();
-            store->Release();
         }
     }
 }
@@ -175,7 +176,7 @@ void QWindowsMediaEncoder::onDurationChanged(qint64 duration)
     durationChanged(m_duration);
 }
 
-void QWindowsMediaEncoder::onStreamingError(int errorCode)
+void QWindowsMediaEncoder::onStreamingError(HRESULT errorCode)
 {
     if (errorCode == MF_E_VIDEO_RECORDING_DEVICE_INVALIDATED)
         updateError(QMediaRecorder::ResourceError, tr("Camera is no longer present"));
@@ -191,7 +192,7 @@ void QWindowsMediaEncoder::onStreamingError(int errorCode)
     }
 }
 
-void QWindowsMediaEncoder::onRecordingError(int errorCode)
+void QWindowsMediaEncoder::onRecordingError(HRESULT errorCode)
 {
     Q_UNUSED(errorCode);
     updateError(QMediaRecorder::ResourceError, tr("Recording error"));

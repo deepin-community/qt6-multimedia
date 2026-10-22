@@ -1,8 +1,6 @@
 # Copyright (C) 2022 The Qt Company Ltd.
 # SPDX-License-Identifier: BSD-3-Clause
 
-# Generated from multimediawidgets.pro.
-
 #####################################################################
 ## MultimediaWidgets Module:
 #####################################################################
@@ -11,6 +9,9 @@ qt_internal_add_module(MultimediaWidgets
     SOURCES
         qtmultimediawidgetsglobal.h
         qvideowidget.cpp qvideowidget.h qvideowidget_p.h
+    DEFINES
+        QT_NO_CAST_FROM_ASCII
+        QT_NO_CAST_TO_ASCII
     LIBRARIES
         Qt::MultimediaPrivate
         Qt::WidgetsPrivate

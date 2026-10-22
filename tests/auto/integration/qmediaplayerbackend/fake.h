@@ -4,9 +4,8 @@
 #ifndef FAKE_H
 #define FAKE_H
 
-#include <testvideosink.h>
+#include <private/testvideosink_p.h>
 
-QT_USE_NAMESPACE
 
 class TestVideoOutput : public QObject
 {

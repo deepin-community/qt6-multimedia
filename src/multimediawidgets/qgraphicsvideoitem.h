@@ -4,15 +4,14 @@
 #ifndef QGRAPHICSVIDEOITEM_H
 #define QGRAPHICSVIDEOITEM_H
 
-#include <QtWidgets/qgraphicsitem.h>
-
 #include <QtMultimediaWidgets/qvideowidget.h>
+
+#include <QtWidgets/qgraphicsitem.h>
 
 #if QT_CONFIG(graphicsview)
 
 QT_BEGIN_NAMESPACE
 
-class QVideoFrameFormat;
 class QGraphicsVideoItemPrivate;
 class Q_MULTIMEDIAWIDGETS_EXPORT QGraphicsVideoItem : public QGraphicsObject
 {
@@ -24,7 +23,7 @@ class Q_MULTIMEDIAWIDGETS_EXPORT QGraphicsVideoItem : public QGraphicsObject
     Q_PROPERTY(QVideoSink* videoSink READ videoSink CONSTANT)
 public:
     explicit QGraphicsVideoItem(QGraphicsItem *parent = nullptr);
-    ~QGraphicsVideoItem();
+    ~QGraphicsVideoItem() override;
 
     Q_INVOKABLE QVideoSink *videoSink() const;
 

@@ -73,8 +73,7 @@ For some quick recipes, see this table:
         \li QAudioSink
     \row
         \li Accessing raw audio input data
-        \li \l{Spectrum Example}{spectrum},
-            \l{Audio Source Example}{audiosource}
+        \li \l{Audio Source Example}{audiosource}
         \li
         \li QAudioSource
     \row
@@ -112,6 +111,25 @@ For some quick recipes, see this table:
         \li \l CaptureSession, \l Camera, \l MediaRecorder
         \li QMediaCaptureSession, QCamera, QMediaRecorder
 \endtable
+
+\section1 Multimedia Security Notes
+
+Qt Multimedia relies heavily on media hardware and its drivers.
+Therefore, we highly recommend using trusted hardware, such as cameras,
+audio devices, graphics cards, and other peripherals, as well as
+a properly configured environment to avoid unexpected Qt Multimedia behavior
+that could result in security-critical issues.
+
+Qt Multimedia components, such as QMediaPlayer, QAudioDecoder,
+and QGStreamerVideoSource may process untrusted media sources.
+When using these components, follow the general best practices for
+\l{Handling Untrusted Data}{handling untrusted data}.
+We aim to keep Qt Multimedia secure regardless of the media file
+or stream provided as input. However, the module highly depends on third-party
+libraries, such as FFmpeg and GStreamer, resulting in a long processing
+data chain that may be vulnerable to security issues if a flaw exists
+at any stage. See \l{Multimedia Security Considerations} page describing
+security-related data flow and exploiting risks.
 
 \section1 Limitations
 

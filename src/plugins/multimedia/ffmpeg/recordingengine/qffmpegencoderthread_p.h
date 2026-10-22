@@ -3,11 +3,23 @@
 #ifndef QFFMPEGENCODERTHREAD_P_H
 #define QFFMPEGENCODERTHREAD_P_H
 
-#include "qffmpegthread_p.h"
-#include "qpointer.h"
-#include "qsemaphore.h"
+//
+//  W A R N I N G
+//  -------------
+//
+// This file is not part of the Qt API. It exists purely as an
+// implementation detail. This header file may change from version to
+// version without notice, or even be removed.
+//
+// We mean it.
+//
 
-#include "private/qmediainputencoderinterface_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegthread_p.h>
+
+#include <QtCore/qfuture.h>
+#include <QtCore/qpointer.h>
+#include <QtCore/qpromise.h>
+#include <QtMultimedia/private/qmediainputencoderinterface_p.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -35,11 +47,9 @@ public:
 
     bool isEndOfSourceStream() const { return m_endOfSourceStream; }
 
-    void startEncoding();
-
     bool isInitialized() const { return m_initialized; }
 
-    void stopAndDelete() override;
+    QFuture<bool> resolvedFuture() const { return m_resolvedPromise.future(); }
 
 protected:
     bool init() override;
@@ -61,10 +71,11 @@ protected:
         });
     }
 
+    void markResolved(bool succeeded);
+
 Q_SIGNALS:
     void canPushFrameChanged();
     void endOfSourceStream();
-    void initialized();
 
 protected:
     bool m_paused = false;
@@ -75,7 +86,7 @@ protected:
     std::atomic_bool m_canPushFrame = false;
     RecordingEngine &m_recordingEngine;
     QPointer<QObject> m_source;
-    QSemaphore m_encodingStartSemaphore;
+    QPromise<bool> m_resolvedPromise;
 };
 
 } // namespace QFFmpeg

@@ -16,7 +16,7 @@
 
 QT_BEGIN_NAMESPACE
 
-static Q_LOGGING_CATEGORY(qLcV4L2Camera, "qt.multimedia.ffmpeg.v4l2camera");
+Q_STATIC_LOGGING_CATEGORY(qLcV4L2Camera, "qt.multimedia.ffmpeg.v4l2camera");
 
 static const struct {
     QVideoFrameFormat::PixelFormat fmt;
@@ -298,7 +298,6 @@ void QV4L2Camera::setManualIsoSensitivity(int iso)
         iso = qBound(minIso(), iso, maxIso());
         setV4L2Parameter(V4L2_CID_ISO_SENSITIVITY, iso);
     }
-    return;
 }
 
 int QV4L2Camera::isoSensitivity() const

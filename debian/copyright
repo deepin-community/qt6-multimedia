@@ -9,7 +9,7 @@ Copyright: 2016-2022 The Qt Company Ltd.
 License: LGPL-3 or GPL-2
 
 Files: debian/*
-Copyright: 2021-2023 Patrick Franz <deltaone@debian.org>
+Copyright: 2021-2026 Patrick Franz <deltaone@debian.org>
            2022 Lu YaNing <dluyaning@gmail.com>
 License: LGPL-3 or GPL-2
 
@@ -19,17 +19,6 @@ Files: src/plugins/multimedia/android/mediacapture/qandroidcamerasession.cpp
        src/plugins/multimedia/android/wrappers/jni/androidcamera_p.h
 Copyright: 2016 Ruslan Baratov
            2016-2021 The Qt Company Ltd.
-License: LGPL-3 or GPL-2
-
-Files: src/plugins/videonode/imx6/qsgvivantevideomaterial.cpp
-       src/plugins/videonode/imx6/qsgvivantevideomaterial.h
-       src/plugins/videonode/imx6/qsgvivantevideomaterialshader.cpp
-       src/plugins/videonode/imx6/qsgvivantevideomaterialshader.h
-       src/plugins/videonode/imx6/qsgvivantevideonode.cpp
-       src/plugins/videonode/imx6/qsgvivantevideonode.h
-       src/plugins/videonode/imx6/qsgvivantevideonodefactory.cpp
-       src/plugins/videonode/imx6/qsgvivantevideonodefactory.h
-Copyright: 2016 Pelagicore AG
 License: LGPL-3 or GPL-2
 
 Files: src/spatialaudio/*
@@ -45,22 +34,10 @@ Files: config.tests/*
 Copyright: 2016-2022 The Qt Company Ltd.
 License: GPL-3 with Qt-1.0 exception
 
-Files: config.tests/mmrenderer/*
-Copyright: 2016 BlackBerry Limited
-License: GPL-3 with Qt-1.0 exception
-
 Files: examples/*
        src/multimedia/doc/snippets/multimedia-snippets/qsound.cpp
 Copyright: 2015-2022 The Qt Company Ltd.
 License: BSD-3-clause
-
-Files: examples/multimedia/spectrum/3rdparty/fftreal/*
-Copyright: 2003-2005 Laurent de Soras
-License: LGPL-2.1
-
-Files: examples/multimedia/spectrum/3rdparty/fftreal/fftreal.pas
-Copyright: 1999 Laurent de Soras
-License: custom-fftreal
 
 Files: *.qdoc
 Copyright: 2015-2021 The Qt Company Ltd.
@@ -108,19 +85,6 @@ License: custom-PFFFT
 Files: src/3rdparty/resonance-audio/*
 Copyright: 2018 Google Inc.
 License: Apache-2.0
-
-License: LGPL-2.1
- This program is free software: you can redistribute it and/or modify
- it under the terms of the GNU Lesser General Public License version 2.1
- as published by the Free Software Foundation.
- .
- This program is distributed in the hope that it will be useful,
- but WITHOUT ANY WARRANTY; without even the implied warranty of
- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- GNU Lesser General Public License for more details.
- .
- On Debian systems, the complete text of the GNU Lesser General Public
- License version 2.1 can be found in /usr/share/common-licenses/LGPL-2.1.
 
 License: LGPL-3
  This program is free software: you can redistribute it and/or modify
@@ -240,13 +204,6 @@ License: Apache-2.0
  .
  On Debian systems, the complete text of the Apache License 2.0 can
  be found in /usr/share/common-licenses/Apache-2.0.
-
-License: custom-fftreal
- Source code may be freely used for any purpose, including commercial
- applications. Programs must display in their "About" dialog-box (or
- documentation) a text telling they use these routines by Laurent de Soras.
- Modified source code can be distributed, but modifications must be clearly
- indicated.
 
 License: custom-PFFFT
  Copyright (c) 2013  Julien Pommier ( pommier@modartt.com )

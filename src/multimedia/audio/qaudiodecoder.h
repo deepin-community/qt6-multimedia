@@ -4,8 +4,8 @@
 #ifndef QAUDIODECODER_H
 #define QAUDIODECODER_H
 
-#include <QtCore/qobject.h>
 #include <QtMultimedia/qaudiobuffer.h>
+#include <QtCore/qobject.h>
 
 QT_BEGIN_NAMESPACE
 
@@ -30,7 +30,7 @@ public:
     Q_ENUM(Error)
 
     explicit QAudioDecoder(QObject *parent = nullptr);
-    ~QAudioDecoder();
+    ~QAudioDecoder() override;
 
     bool isSupported() const;
     bool isDecoding() const;
@@ -77,7 +77,7 @@ private:
     Q_DECLARE_PRIVATE(QAudioDecoder)
 
     // ### Qt7: remove unused member
-    QT6_ONLY(void *unused = nullptr;) // for ABI compatibility
+    QT6_ONLY(Q_DECL_UNUSED_MEMBER void *unused = nullptr;) // for ABI compatibility
 };
 
 QT_END_NAMESPACE

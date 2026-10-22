@@ -14,19 +14,21 @@
 // We mean it.
 //
 
-#include "qffmpegdefs_p.h"
-#include "qffmpegavaudioformat_p.h"
+#include <QtFFmpegMediaPluginImpl/private/qffmpegdefs_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegcodec_p.h>
+#include <QtFFmpegMediaPluginImpl/private/qffmpegavaudioformat_p.h>
 #include <QtMultimedia/qvideoframeformat.h>
+#include <QtMultimedia/private/qmultimedia_ranges_p.h>
 
 #include <qstring.h>
 #include <optional>
 
-inline bool operator==(const AVRational &lhs, const AVRational &rhs)
+[[maybe_unused]] static inline bool operator==(const AVRational &lhs, const AVRational &rhs)
 {
     return lhs.num == rhs.num && lhs.den == rhs.den;
 }
 
-inline bool operator!=(const AVRational &lhs, const AVRational &rhs)
+[[maybe_unused]] static inline bool operator!=(const AVRational &lhs, const AVRational &rhs)
 {
     return !(lhs == rhs);
 }
@@ -36,9 +38,21 @@ QT_BEGIN_NAMESPACE
 namespace QFFmpeg
 {
 
+namespace ranges = QtMultimediaPrivate::ranges;
+
 inline std::optional<qint64> mul(qint64 a, AVRational b)
 {
-    return b.den != 0 ? (a * b.num + b.den / 2) / b.den : std::optional<qint64>{};
+    if (b.den == 0)
+        return {};
+
+    auto multiplyAndRound = [](qint64 a, AVRational b) { //
+        return (a * b.num + b.den / 2) / b.den;
+    };
+
+    if (a < 0)
+        return -multiplyAndRound(-a, b);
+    else
+        return multiplyAndRound(a, b);
 }
 
 inline std::optional<qreal> mul(qreal a, AVRational b)
@@ -93,8 +107,7 @@ inline int64_t getAVFrameDuration(const AVFrame &frame)
 #if QT_FFMPEG_HAS_FRAME_DURATION
     return frame.duration;
 #else
-    Q_UNUSED(frame);
-    return 0;
+    return frame.pkt_duration;
 #endif
 }
 
@@ -120,111 +133,139 @@ struct AVDictionaryHolder
     }
 };
 
-template<typename FunctionType, FunctionType F>
+template <auto F>
 struct AVDeleter
 {
-    template<typename T>
+    template <typename T>
     void operator()(T *object) const
     {
-        if (object)
-            F(&object);
+        using FunctionType = decltype(F);
+
+        static_assert(std::is_invocable_v<FunctionType, T *>
+                              || std::is_invocable_v<FunctionType, T **>,
+                      "F must be invocable with either T* or T**");
+
+        if constexpr (std::is_invocable_v<FunctionType, T **>) {
+            if (object)
+                F(&object);
+        } else
+            F(object);
     }
 };
 
-using AVFrameUPtr = std::unique_ptr<AVFrame, AVDeleter<decltype(&av_frame_free), &av_frame_free>>;
+using AVFrameUPtr = std::unique_ptr<AVFrame, AVDeleter<av_frame_free>>;
 
 inline AVFrameUPtr makeAVFrame()
 {
     return AVFrameUPtr(av_frame_alloc());
 }
 
-using AVPacketUPtr =
-        std::unique_ptr<AVPacket, AVDeleter<decltype(&av_packet_free), &av_packet_free>>;
+using AVPacketUPtr = std::unique_ptr<AVPacket, AVDeleter<av_packet_free>>;
+using AVCodecContextUPtr = std::unique_ptr<AVCodecContext, AVDeleter<avcodec_free_context>>;
+using AVBufferUPtr = std::unique_ptr<AVBufferRef, AVDeleter<av_buffer_unref>>;
+using AVHWFramesConstraintsUPtr =
+        std::unique_ptr<AVHWFramesConstraints, AVDeleter<av_hwframe_constraints_free>>;
+using SwrContextUPtr = std::unique_ptr<SwrContext, AVDeleter<swr_free>>;
+using SwsContextUPtr = std::unique_ptr<SwsContext, AVDeleter<sws_freeContext>>;
+using AVDemuxerContextUPtr = std::unique_ptr<AVFormatContext, AVDeleter<avformat_close_input>>;
+using AVMuxerContextUPtr = std::unique_ptr<AVFormatContext, AVDeleter<avformat_free_context>>;
 
-using AVCodecContextUPtr =
-        std::unique_ptr<AVCodecContext,
-                        AVDeleter<decltype(&avcodec_free_context), &avcodec_free_context>>;
+bool isAVFormatSupported(const Codec &, const PixelOrSampleFormat &);
 
-using AVBufferUPtr =
-        std::unique_ptr<AVBufferRef, AVDeleter<decltype(&av_buffer_unref), &av_buffer_unref>>;
-
-using AVHWFramesConstraintsUPtr = std::unique_ptr<
-        AVHWFramesConstraints,
-        AVDeleter<decltype(&av_hwframe_constraints_free), &av_hwframe_constraints_free>>;
-
-using SwrContextUPtr = std::unique_ptr<SwrContext, AVDeleter<decltype(&swr_free), &swr_free>>;
-
-template <typename T>
-inline constexpr auto InvalidAvValue = T{};
-
-template<>
-inline constexpr auto InvalidAvValue<AVSampleFormat> = AV_SAMPLE_FMT_NONE;
-
-template<>
-inline constexpr auto InvalidAvValue<AVPixelFormat> = AV_PIX_FMT_NONE;
-
-bool isAVFormatSupported(const AVCodec *codec, PixelOrSampleFormat format);
-
-template <typename Format>
-bool hasAVValue(const Format *fmts, Format format)
+// Search for the first element in the range that satisfies the predicate
+// The predicate is evaluated for each value in the range until it returns
+// true, and the corresponding value is returned. If no match is found,
+// std::nullopt is returned.
+template <typename Value, typename Predicate>
+std::optional<Value> findIf(QSpan<const Value> range, const Predicate &predicate)
 {
-    return findAVValue(fmts, [format](Format f) { return f == format; }) != InvalidAvValue<Format>;
+    const auto value = ranges::find_if(range, predicate);
+    if (value == range.end())
+        return {};
+    return *value;
 }
 
-template <typename AVValue, typename Predicate>
-AVValue findAVValue(const AVValue *fmts, const Predicate &predicate)
-{
-    auto scoresGetter = [&predicate](AVValue value) {
-        return predicate(value) ? BestAVScore : NotSuitableAVScore;
-    };
-    return findBestAVValue(fmts, scoresGetter).first;
-}
-
+// Search the codec's pixel formats for a format that matches the predicate.
+// If no pixel format is found, repeat the search through the pixel formats
+// of all the codec's hardware configs. If no matching pixel format is found,
+// std::nullopt is returned. The predicate is evaluated once for each pixel
+// format until the predicate returns true.
 template <typename Predicate>
-const AVCodecHWConfig *findHwConfig(const AVCodec *codec, const Predicate &predicate)
+std::optional<AVPixelFormat> findAVPixelFormat(const Codec &codec, const Predicate &predicate)
 {
-    for (int i = 0; const auto hwConfig = avcodec_get_hw_config(codec, i); ++i) {
-        if (predicate(hwConfig))
-            return hwConfig;
-    }
+    if (codec.type() != AVMEDIA_TYPE_VIDEO)
+        return {};
 
-    return nullptr;
-}
+    const auto pixelFormats = codec.pixelFormats();
 
-template <typename Predicate>
-AVPixelFormat findAVPixelFormat(const AVCodec *codec, const Predicate &predicate)
-{
-    const AVPixelFormat format = findAVValue(codec->pix_fmts, predicate);
-    if (format != AV_PIX_FMT_NONE)
+    if (const auto format = findIf(pixelFormats, predicate))
         return format;
 
-    auto checkHwConfig = [&predicate](const AVCodecHWConfig *config) {
-        return config->pix_fmt != AV_PIX_FMT_NONE && predicate(config->pix_fmt);
-    };
+    // No matching pixel format was found. Check the pixel format
+    // of the codec's hardware config.
+    for (const AVCodecHWConfig *const config : codec.hwConfigs()) {
+        const AVPixelFormat format = config->pix_fmt;
 
-    if (auto hwConfig = findHwConfig(codec, checkHwConfig))
-        return hwConfig->pix_fmt;
+        if (format == AV_PIX_FMT_NONE)
+            continue;
 
-    return AV_PIX_FMT_NONE;
+        if (predicate(format))
+            return format;
+    }
+    return {};
 }
 
-template <typename Value, typename CalculateScore>
-auto findBestAVValue(const Value *values, const CalculateScore &calculateScore)
+// Evaluate the function for each of the codec's pixel formats and each of
+// the pixel formats supported by the codec's hardware configs.
+template <typename Function>
+void forEachAVPixelFormat(const Codec &codec, const Function &function)
 {
-    using Limits = std::numeric_limits<decltype(calculateScore(*values))>;
+    findAVPixelFormat(codec, [&function](AVPixelFormat format) {
+        function(format);
+        return false; // Evaluate the function for all pixel formats
+    });
+}
 
-    const Value invalidValue = InvalidAvValue<Value>;
-    std::pair result(invalidValue, Limits::min());
-    if (values) {
+template <typename ValueT, typename ScoreT = AVScore>
+struct ValueAndScore
+{
+    ValueT value;
+    ScoreT score = std::numeric_limits<ScoreT>::min();
+};
 
-        for (; *values != invalidValue && result.second != Limits::max(); ++values) {
-            const auto score = calculateScore(*values);
-            if (score > result.second)
-                result = { *values, score };
-        }
+template <typename ValueRange, typename CalculateScore,
+          typename Value = QtMultimediaPrivate::ranges::range_value_t<ValueRange>,
+          typename ScoreType = std::invoke_result_t<CalculateScore, Value>>
+std::optional<ValueAndScore<Value, ScoreType>>
+findBestAVValueWithScore(ValueRange &&values, const CalculateScore &calculateScore)
+{
+    static_assert(std::is_invocable_v<CalculateScore, Value>);
+
+    std::optional<ValueAndScore<Value, ScoreType>> result;
+    for (const Value &val : values) {
+        const ScoreType score = calculateScore(val);
+        if (score == std::numeric_limits<ScoreType>::min())
+            continue;
+
+        if (!result || score > result->score)
+            result = { val, score };
+
+        if (result->score == std::numeric_limits<ScoreType>::max())
+            return result;
     }
 
     return result;
+}
+
+template <typename ValueRange, typename CalculateScore,
+          typename Value = QtMultimediaPrivate::ranges::range_value_t<ValueRange>>
+std::optional<Value> findBestAVValue(ValueRange &&values, const CalculateScore &calculateScore)
+{
+    auto optionalValueAndScore = findBestAVValueWithScore(values, calculateScore);
+    if (optionalValueAndScore)
+        return optionalValueAndScore->value;
+    else
+        return std::nullopt;
 }
 
 bool isHwPixelFormat(AVPixelFormat format);
@@ -234,9 +275,7 @@ inline bool isSwPixelFormat(AVPixelFormat format)
     return !isHwPixelFormat(format);
 }
 
-bool isAVCodecExperimental(const AVCodec *codec);
-
-void applyExperimentalCodecOptions(const AVCodec *codec, AVDictionary** opts);
+void applyExperimentalCodecOptions(const Codec &codec, AVDictionary **opts);
 
 AVPixelFormat pixelFormatForHwDevice(AVHWDeviceType deviceType);
 
@@ -261,17 +300,45 @@ AVColorRange toAvColorRange(QVideoFrameFormat::ColorRange colorRange);
 
 AVHWDeviceContext *avFrameDeviceContext(const AVFrame *frame);
 
+SwsContextUPtr createSwsContext(const QSize &srcSize, AVPixelFormat srcPixFmt, const QSize &dstSize,
+                                AVPixelFormat dstPixFmt, SwsFlags conversionType = SWS_BICUBIC);
+
 #ifdef Q_OS_DARWIN
 bool isCVFormatSupported(uint32_t format);
 
 std::string cvFormatToString(uint32_t format);
 
 #endif
-}
+
+enum class AVError : int {
+    Success = 0,
+};
+
+enum class AVCodecCapabilities : uint64_t { };
+enum class AVPixelFormatFlags : uint64_t { };
+enum class AVHwConfigMethods : uint64_t { };
+
+QString toString(AVCodecCapabilities capabilities);
+QString toString(AVPixelFormatFlags flags);
+QString toString(AVHwConfigMethods methods);
+
+} // namespace QFFmpeg
 
 QDebug operator<<(QDebug, const AVRational &);
+QDebug operator<<(QDebug, const AVDictionary &);
+QDebug operator<<(QDebug, const QFFmpeg::AVDictionaryHolder &);
+QDebug operator<<(QDebug, QFFmpeg::AVError);
+QDebug operator<<(QDebug, AVPixelFormat);
+QDebug operator<<(QDebug, AVHWDeviceType);
+QDebug operator<<(QDebug, AVMediaType);
+QDebug operator<<(QDebug, AVCodecID);
+QDebug operator<<(QDebug, const AVOutputFormat *);
+QDebug operator<<(QDebug, const AVInputFormat *);
+QDebug operator<<(QDebug, QFFmpeg::AVCodecCapabilities);
+QDebug operator<<(QDebug, QFFmpeg::AVPixelFormatFlags);
+QDebug operator<<(QDebug, QFFmpeg::AVHwConfigMethods);
 
-#if !QT_FFMPEG_OLD_CHANNEL_LAYOUT
+#if QT_FFMPEG_HAS_AV_CHANNEL_LAYOUT
 QDebug operator<<(QDebug, const AVChannelLayout &);
 #endif
 

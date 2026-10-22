@@ -1,7 +1,8 @@
 // Copyright (C) 2016 The Qt Company Ltd.
 // SPDX-License-Identifier: LicenseRef-Qt-Commercial OR GPL-3.0-only
 
-#include <QtTest/QtTest>
+#include <QtTest/qtest.h>
+#include <QtTest/qsignalspy.h>
 #include <QDebug>
 
 #include <qvideosink.h>
@@ -18,7 +19,8 @@
 #include "qmockmediacapturesession.h"
 #include "qmockcamera.h"
 
-QT_USE_NAMESPACE
+#include <private/mediabackendutils_p.h>
+
 
 Q_ENABLE_MOCK_MULTIMEDIA_PLUGIN
 
@@ -76,7 +78,7 @@ private slots:
 void tst_QCamera::initTestCase()
 {
 #ifdef Q_OS_MACOS
-    if (qEnvironmentVariable("QTEST_ENVIRONMENT").toLower() == "ci")
+    if (isCI())
         QSKIP("Flakiness on macOS CI, to be investigated, QTBUG-111812");
 #endif
 }
@@ -601,8 +603,8 @@ void tst_QCamera::testErrorSignal()
     QCamera camera;
     session.setCamera(&camera);
     auto *service = QMockIntegration::instance()->lastCaptureService();
-    Q_ASSERT(service);
-    Q_ASSERT(service->mockCameraControl);
+    QTEST_ASSERT(service);
+    QTEST_ASSERT(service->mockCameraControl);
 
     QSignalSpy spyError(&camera, &QCamera::errorOccurred);
 

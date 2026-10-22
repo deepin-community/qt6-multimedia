@@ -14,17 +14,15 @@
 //
 // We mean it.
 //
-#include "qobject.h"
-#include "qpointer.h"
+#include <QtCore/qtconfigmacros.h>
 
-#include <memory>
 #include <array>
 
 QT_BEGIN_NAMESPACE
 
 namespace QFFmpeg {
 class PlaybackEngine;
-}
+} // namespace QFFmpeg
 
 namespace QFFmpeg {
 
